@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="hu">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16101f">
+  <meta name="description" content="Énekelj! – társasjáték: kapsz egy random magyar szót, és el kell énekelned egy dalt, amiben benne van.">
+  <title>Énekelj!</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app">
+
+    <!-- BEÁLLÍTÁSOK -->
+    <section id="screen-setup" class="screen active" aria-labelledby="title">
+      <header class="hero">
+        <h1 id="title">Énekelj<span class="accent">!</span></h1>
+        <p class="tagline">Kapsz egy random szót. Énekelj el egy dalt, amiben benne van.</p>
+      </header>
+
+      <div class="panel">
+        <h2>Játékosok</h2>
+        <form id="player-form" class="row" autocomplete="off">
+          <input id="player-input" type="text" maxlength="20" placeholder="Név, pl. Bori" aria-label="Játékos neve">
+          <button type="submit" class="btn btn-ghost">Hozzáad</button>
+        </form>
+        <ul id="player-list" class="chips" aria-live="polite"></ul>
+        <p class="hint" id="player-hint">Játékosok nélkül is mehet: akkor csak szavakat dob, pontozás nélkül.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Nehézség</h2>
+        <div class="seg" role="radiogroup" data-setting="difficulty">
+          <button type="button" role="radio" data-value="konnyu">Könnyű</button>
+          <button type="button" role="radio" data-value="kozepes">Közepes</button>
+          <button type="button" role="radio" data-value="nehez">Nehéz</button>
+          <button type="button" role="radio" data-value="vegyes">Vegyes</button>
+        </div>
+
+        <h2>Szavak körönként</h2>
+        <div class="seg" role="radiogroup" data-setting="count">
+          <button type="button" role="radio" data-value="1">1</button>
+          <button type="button" role="radio" data-value="2">2</button>
+          <button type="button" role="radio" data-value="3">3</button>
+        </div>
+
+        <h2>Időlimit</h2>
+        <div class="seg" role="radiogroup" data-setting="time">
+          <button type="button" role="radio" data-value="0">Nincs</button>
+          <button type="button" role="radio" data-value="15">15 mp</button>
+          <button type="button" role="radio" data-value="30">30 mp</button>
+          <button type="button" role="radio" data-value="60">60 mp</button>
+        </div>
+      </div>
+
+      <button id="start-btn" class="btn btn-primary btn-big">Kezdjük! 🎤</button>
+
+      <details class="rules">
+        <summary>Szabályok</summary>
+        <ol>
+          <li>A soron következő játékos kap egy (vagy több) szót.</li>
+          <li>Az idő lejárta előtt el kell énekelnie legalább egy sort egy létező dalból, amiben a szó elhangzik. Több szónál mindnek ugyanabban a dalban kell lennie – vagy improvizálj egy saját dalt, ha a többiek elfogadják.</li>
+          <li>Ha sikerült, szavanként 1 pont jár. Ha nem, jön a következő.</li>
+          <li>Elakadtál? A „Tipp” gomb dalokat mutat a <a id="playlist-link" target="_blank" rel="noopener">referencia-playlistről</a>, amelyek címében szerepel a szó.</li>
+        </ol>
+      </details>
+    </section>
+
+    <!-- JÁTÉK -->
+    <section id="screen-game" class="screen" aria-live="polite">
+      <div class="topbar">
+        <button id="quit-btn" class="btn btn-link" type="button">← Vége</button>
+        <span id="round-label" class="muted"></span>
+      </div>
+
+      <div id="turn" class="turn"></div>
+
+      <div id="card" class="card">
+        <div id="words" class="words"></div>
+        <div id="timer" class="timer" hidden>
+          <div class="timer-bar"><div id="timer-fill"></div></div>
+          <span id="timer-text"></span>
+        </div>
+      </div>
+
+      <div id="actions" class="actions"></div>
+
+      <div class="secondary">
+        <button id="reroll-btn" type="button" class="btn btn-ghost">🔀 Másik szó</button>
+        <button id="hint-btn" type="button" class="btn btn-ghost">💡 Tipp</button>
+      </div>
+      <div id="hint-box" class="hint-box" hidden></div>
+
+      <ol id="scoreboard" class="scoreboard"></ol>
+    </section>
+
+    <!-- EREDMÉNY -->
+    <section id="screen-results" class="screen">
+      <header class="hero">
+        <h1>Vége<span class="accent">!</span></h1>
+        <p id="winner" class="tagline"></p>
+      </header>
+      <ol id="final-board" class="scoreboard final"></ol>
+      <button id="again-btn" class="btn btn-primary btn-big">Új játék</button>
+    </section>
+
+  </main>
+
+  <script src="js/words.js"></script>
+  <script src="js/playlist.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
