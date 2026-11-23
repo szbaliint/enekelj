@@ -1,12 +1,13 @@
 (function () {
   "use strict";
 
-  const LEVEL_NAMES = { konnyu: "Könnyű", kozepes: "Közepes", nehez: "Nehéz" };
-  const LEVELS = Object.keys(LEVEL_NAMES);
+  const LEVELS = ["konnyu", "kozepes", "nehez"];
   const STORAGE_KEY = "enekelj:v1";
 
   // ---------- Állapot ----------
-  const settings = { difficulty: "vegyes", count: "1", time: "30" };
+  const browserLang = (navigator.language || "").toLowerCase().startsWith("hu") ? "hu" : "en";
+  const settings = { lang: browserLang, difficulty: "vegyes", count: "1", time: "30" };
+  const t = (key) => key.split(".").reduce((o, k) => o[k], window.I18N[settings.lang]);
   let players = []; // { name, score }
   let turnIndex = 0;
   let turnsPlayed = 0;
@@ -25,6 +26,7 @@
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
       if (!saved) return;
       Object.assign(settings, saved.settings || {});
+      if (!window.I18N[settings.lang]) settings.lang = browserLang;
       players = (saved.players || []).map((name) => ({ name, score: 0 }));
     } catch (_) { /* privát mód, tiltott tárhely – nem baj */ }
   }
@@ -47,11 +49,12 @@
   }
   function draw(level, exclude) {
     for (let tries = 0; tries < 5; tries++) {
-      if (!decks[level] || decks[level].length === 0) decks[level] = shuffle(window.WORDS[level]);
-      const w = decks[level].pop();
+      const key = settings.lang + ":" + level;
+      if (!decks[key] || decks[key].length === 0) decks[key] = shuffle(window.WORDS[settings.lang][level]);
+      const w = decks[key].pop();
       if (!exclude.includes(w)) return w;
     }
-    return decks[level].pop() || window.WORDS[level][0];
+    return window.WORDS[settings.lang][level][0];
   }
   function drawRound() {
     const n = Number(settings.count);
@@ -74,17 +77,24 @@
   function matches(word, titleWord) {
     if (word.length < 3) return word === titleWord;
     // rövid szavaknál csak rag fér a végére (autó → autók), különben hamis találat lenne (ház → házibuli)
-    const maxSuffix = word.length <= 4 ? 2 : 5;
+    // angolban rövid szónál csak többes szám (car ≠ carry) / English: only a plural "s" on short words
+    const maxSuffix = word.length <= 4 ? (settings.lang === "en" ? 1 : 2) : 5;
     if (titleWord.startsWith(word) && titleWord.length - word.length <= maxSuffix) return true;
     if (word.length >= 5 && titleWord.includes(word)) return true;
     const cp = commonPrefix(word, titleWord);
     return cp >= 6 && cp >= Math.max(word.length, titleWord.length) - 3;
   }
+  // "(feat. ...)", "[From ...]" és remix-jelölések nélkül / without featured artists and remix tags
+  function cleanTitle(title) {
+    return title.replace(/\s*[([](feat\.|with |from )[^)\]]*[)\]]/gi, "").replace(/\s+-\s+.*remix.*$/i, "").trim();
+  }
+
   function hintsFor(word) {
     const parts = word.toLowerCase().split(/\s+/);
-    return window.PLAYLIST.filter((song) => {
-      const titleWords = song.t.toLowerCase().split(/[^\p{L}\d]+/u).filter(Boolean);
-      return parts.some((p) => titleWords.some((tw) => matches(p, tw)));
+    return window.PLAYLISTS[settings.lang].songs.filter((song) => {
+      const titleWords = cleanTitle(song.t).toLowerCase().split(/[^\p{L}\d]+/u).filter(Boolean);
+      // többszavas kifejezésnél minden szónak szerepelnie kell / every part of a phrase must match
+      return parts.every((p) => titleWords.some((tw) => matches(p, tw)));
     });
   }
 
@@ -131,7 +141,7 @@
         beep(220, 0.5);
         if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
         $("card").classList.add("timeout");
-        $("timer-text").textContent = "Lejárt!";
+        $("timer-text").textContent = t("timeUp");
       }
     };
     tick();
@@ -154,7 +164,7 @@
       const del = document.createElement("button");
       del.type = "button";
       del.textContent = "✕";
-      del.setAttribute("aria-label", p.name + " törlése");
+      del.setAttribute("aria-label", t("remove")(p.name));
       del.onclick = () => { players.splice(i, 1); save(); renderPlayers(); };
       li.appendChild(del);
       list.appendChild(li);
@@ -170,6 +180,34 @@
     });
   }
 
+  // Felület nyelvének beállítása / apply UI language
+  function applyLang() {
+    document.documentElement.lang = settings.lang;
+    document.title = t("pageTitle");
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+    document.querySelectorAll("[data-secs]").forEach((el) => { el.textContent = el.dataset.secs + " " + t("seconds"); });
+    const input = $("player-input");
+    input.placeholder = t("namePlaceholder");
+    input.setAttribute("aria-label", t("nameLabel"));
+    const pl = window.PLAYLISTS[settings.lang];
+    const ol = $("rules-list");
+    ol.innerHTML = "";
+    t("rules").forEach((text) => {
+      const li = document.createElement("li");
+      const [pre, post] = text.split("{link}");
+      li.append(pre);
+      if (post !== undefined) {
+        const a = document.createElement("a");
+        a.href = pl.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = (settings.lang === "hu" ? "„" : "“") + pl.name + "”";
+        li.append(a, post);
+      }
+      ol.appendChild(li);
+    });
+  }
+
   // ---------- Játék képernyő ----------
   function renderWords() {
     const box = $("words");
@@ -182,7 +220,7 @@
     });
     const lvl = document.createElement("div");
     lvl.className = "level";
-    lvl.textContent = [...new Set(current.map((c) => LEVEL_NAMES[c.level]))].join(" · ");
+    lvl.textContent = [...new Set(current.map((c) => t("levels." + c.level)))].join(" · ");
     box.appendChild(lvl);
   }
 
@@ -190,13 +228,13 @@
     const turn = $("turn");
     if (players.length) {
       turn.innerHTML = "";
-      turn.append("Te jössz, ");
+      const [before, after] = t("yourTurn");
       const s = document.createElement("strong");
       s.textContent = players[turnIndex].name;
-      turn.append(s, "!");
-      $("round-label").textContent = (Math.floor(turnsPlayed / players.length) + 1) + ". kör";
+      turn.append(before, s, after);
+      $("round-label").textContent = t("round")(Math.floor(turnsPlayed / players.length) + 1);
     } else {
-      turn.textContent = current.length > 1 ? "Egy dal, amiben mind benne van:" : "Énekelj egy dalt ezzel a szóval:";
+      turn.textContent = current.length > 1 ? t("singMany") : t("singOne");
       $("round-label").textContent = "";
     }
   }
@@ -214,12 +252,12 @@
       return b;
     };
     if (!players.length) {
-      mk("Következő szó →", "btn-primary full", nextTurn);
+      mk(t("nextWord"), "btn-primary full", nextTurn);
     } else if (resolved) {
-      mk("Következő játékos →", "btn-primary full", nextTurn);
+      mk(t("nextPlayer"), "btn-primary full", nextTurn);
     } else {
-      mk("✗ Nem ment", "btn-bad", () => resolve(false));
-      mk("✓ Elénekelte!", "btn-good", () => resolve(true));
+      mk(t("fail"), "btn-bad", () => resolve(false));
+      mk(t("success"), "btn-good", () => resolve(true));
     }
   }
 
@@ -250,20 +288,20 @@
       const p = document.createElement("div");
       const b = document.createElement("strong");
       b.textContent = c.word;
-      p.append("A playlistről – ", b, ":");
+      p.append(t("hintFrom"), b, ":");
       const ul = document.createElement("ul");
       songs.slice(0, 5).forEach((s) => {
         const li = document.createElement("li");
         const a = document.createElement("span");
         a.className = "artist";
         a.textContent = " – " + s.a;
-        li.append(s.t, a);
+        li.append(cleanTitle(s.t), a);
         ul.appendChild(li);
       });
       box.append(p, ul);
     });
     if (!any) {
-      box.textContent = "Erre nincs dal a playlistről. Jöhet népdal, gyerekdal, sláger – vagy improvizálj!";
+      box.textContent = t("noHint");
     }
     box.hidden = false;
   }
@@ -318,8 +356,8 @@
     const top = ranked[0].score;
     const winners = ranked.filter((p) => p.score === top).map((p) => p.name);
     $("winner").textContent = top === 0
-      ? "Senki nem szerzett pontot. Legközelebb hangosabban! 🎶"
-      : (winners.length > 1 ? "Holtverseny: " + winners.join(", ") : "Győztes: " + winners[0]) + " 🏆";
+      ? t("nobody")
+      : (winners.length > 1 ? t("tie") + winners.join(", ") : t("winner") + winners[0]) + " 🏆";
     const ol = $("final-board");
     ol.innerHTML = "";
     ranked.forEach((p) => {
@@ -328,7 +366,7 @@
       name.textContent = p.name;
       const pts = document.createElement("span");
       pts.className = "pts";
-      pts.textContent = p.score + " pont";
+      pts.textContent = t("points")(p.score);
       li.append(name, pts);
       ol.appendChild(li);
     });
@@ -340,7 +378,7 @@
     load();
     renderPlayers();
     renderSettings();
-    $("playlist-link").href = window.PLAYLIST_URL;
+    applyLang();
 
     $("player-form").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -362,6 +400,7 @@
         settings[seg.dataset.setting] = b.dataset.value;
         save();
         renderSettings();
+        if (seg.dataset.setting === "lang") { applyLang(); renderPlayers(); }
       });
     });
 

@@ -1,7 +1,10 @@
 // A referencia-lejátszási lista ("magyar chill pt2") dalai.
 // Forrás: https://open.spotify.com/playlist/5QrmfO0XziaHFTL4wr8XNW
-window.PLAYLIST_URL = "https://open.spotify.com/playlist/5QrmfO0XziaHFTL4wr8XNW";
-window.PLAYLIST = [
+window.PLAYLISTS = window.PLAYLISTS || {};
+window.PLAYLISTS.hu = {
+  name: "magyar chill pt2",
+  url: "https://open.spotify.com/playlist/5QrmfO0XziaHFTL4wr8XNW",
+  songs: [
   {"t": "Zserbógalopp", "a": "Analog Balaton"},
   {"t": "úgy unom", "a": "Mehringer, sosehol"},
   {"t": "Gyógyul", "a": "Analog Balaton"},
@@ -102,4 +105,5 @@ window.PLAYLIST = [
   {"t": "Hűtlen tangó", "a": "Máklikőr"},
   {"t": "Jerikó", "a": "Indigo, Dan Pinto, OB"},
   {"t": "Sivatag", "a": "Indigo, Dan Pinto"}
-];
+],
+};

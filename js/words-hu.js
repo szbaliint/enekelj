@@ -2,7 +2,8 @@
 // könnyű: gyakori dalszöveg-szavak, szinte minden magyar dalban előfordulnak
 // közepes: konkrétabb szavak, kell egy kicsit gondolkodni
 // nehéz: ritka, vicces vagy "énekelhetetlen" szavak – itt jöhet az improvizáció
-window.WORDS = {
+window.WORDS = window.WORDS || {};
+window.WORDS.hu = {
   konnyu: [
     "szerelem", "szív", "éjszaka", "nap", "hold", "csillag", "eső", "szél",
     "tenger", "víz", "tűz", "fény", "álom", "könny", "csók", "szem", "kéz",
