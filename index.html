@@ -89,8 +89,35 @@
         <div class="seg" role="radiogroup" data-setting="player">
           <button type="button" role="radio" data-value="youtube">▶ YouTube</button>
           <button type="button" role="radio" data-value="spotify">● Spotify</button>
+          <button type="button" role="radio" data-value="premium">★ Premium</button>
         </div>
         <p class="hint" id="player-desc"></p>
+
+        <!-- Spotify Premium -->
+        <div id="premium-panel" class="premium" hidden>
+          <div id="sp-setup" hidden>
+            <p class="hint" id="sp-setup-text"></p>
+            <form id="sp-client-form" class="row" autocomplete="off">
+              <input id="sp-client-input" type="text" spellcheck="false" placeholder="Client ID">
+              <button type="submit" class="btn btn-ghost" data-i18n="spSave"></button>
+            </form>
+          </div>
+          <div id="sp-login-row" hidden>
+            <button id="sp-login" type="button" class="btn btn-spotify" data-i18n="spLogin"></button>
+          </div>
+          <div id="sp-account" hidden>
+            <p class="sp-who"><span id="sp-name"></span> <button id="sp-logout" type="button" class="btn btn-link" data-i18n="spLogout"></button></p>
+            <p id="sp-not-premium" class="hint" data-i18n="spNotPremium" hidden></p>
+            <div id="sp-device-row">
+              <h2 data-i18n="spDevice"></h2>
+              <div class="row">
+                <select id="sp-device"></select>
+                <button id="sp-refresh" type="button" class="btn btn-ghost" data-i18n="spRefresh"></button>
+              </div>
+              <p id="sp-device-hint" class="hint"></p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <p id="start-error" class="error" role="alert" hidden></p>
@@ -144,8 +171,10 @@
 
   </main>
 
+  <script src="js/config.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/match.js"></script>
+  <script src="js/spotify.js"></script>
   <script src="js/player.js"></script>
   <script src="js/data-hu.js"></script>
   <script src="js/data-en.js"></script>

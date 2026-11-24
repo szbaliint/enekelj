@@ -10,6 +10,7 @@
   const settings = {
     lang: browserLang, game: "szo", mode: "kor", goal: "5",
     difficulty: "vegyes", count: "1", time: "30", player: "youtube",
+    spDevice: "", spDeviceName: "",
   };
   const t = (key) => key.split(".").reduce((o, k) => o[k], window.I18N[settings.lang]);
   const data = () => window.GAME_DATA[settings.lang];
@@ -185,6 +186,57 @@
     $("game-desc").textContent = t("gameDesc." + settings.game);
     $("player-desc").textContent = t("playerDesc." + settings.player);
     $("start-error").hidden = true;
+    renderPremium();
+  }
+
+  // ---------- Spotify Premium panel ----------
+  function renderPremium() {
+    const show = settings.player === "premium";
+    $("premium-panel").hidden = !show;
+    if (!show) return;
+    const hasId = Boolean(SP().clientId());
+    const prof = SP().profile();
+    $("sp-setup").hidden = hasId || Boolean(prof);
+    $("sp-setup-text").textContent = t("spSetup").replace("{uri}", SP().redirectUri());
+    $("sp-login-row").hidden = !hasId || Boolean(prof);
+    $("sp-account").hidden = !prof;
+    if (prof) {
+      $("sp-name").textContent = t("spLoggedIn")(prof.name);
+      $("sp-not-premium").hidden = prof.premium;
+      $("sp-device-row").hidden = !prof.premium;
+    }
+  }
+
+  const DEVICE_ICON = { browser: "💻", smartphone: "📱", speaker: "🔊", computer: "🖥", tv: "📺", tablet: "📱" };
+  let refreshing = null;
+  function refreshDevices() {
+    const prof = SP().profile();
+    if (!prof || !prof.premium) return Promise.resolve();
+    if (refreshing) return refreshing;
+    refreshing = SP().devices().then((list) => {
+      refreshing = null;
+      const sel = $("sp-device");
+      sel.innerHTML = "";
+      list.forEach((d) => {
+        const o = document.createElement("option");
+        o.value = d.id;
+        o.textContent = d.type === "browser" ? t("spThisBrowser") : (DEVICE_ICON[d.type] || "🎧") + " " + d.name;
+        o.dataset.name = d.name || "";
+        sel.appendChild(o);
+      });
+      sel.hidden = list.length === 0;
+      if (!list.length) {
+        settings.spDevice = "";
+        $("sp-device-hint").textContent = t("spNoDevices");
+      } else {
+        if (!list.some((d) => d.id === settings.spDevice)) settings.spDevice = list[0].id;
+        sel.value = settings.spDevice;
+        settings.spDeviceName = sel.selectedOptions[0].dataset.name;
+        $("sp-device-hint").textContent = settings.spDevice === SP().BROWSER ? "" : t("spPhoneHint");
+      }
+      save();
+    });
+    return refreshing;
   }
 
   // Felület nyelvének beállítása / apply UI language
@@ -387,12 +439,43 @@
   // ---------- Lejátszó / player ----------
   // A beállított lejátszó; ha a dalhoz nincs YouTube-videó, Spotify.
   // The chosen player; falls back to Spotify when the song has no YouTube video.
-  // Ha a YouTube nem szól, magától Spotify-ra vált (lásd Player.smart).
-  // If YouTube doesn't play, it switches to Spotify by itself (see Player.smart).
-  function makePlayer(container, song) {
-    return window.Player.smart(container, song, settings.player === "youtube", (kind) => {
+  // Lejátszó választása / choosing the player:
+  //  - Premium, ha be vagy jelentkezve és van eszköz / Premium when logged in with a device
+  //  - különben YouTube, ami ha nem szól, magától Spotify-ra vált (Player.smart)
+  //    otherwise YouTube, which switches to Spotify by itself if it can't play (Player.smart)
+  // ui: { label: forrás-felirat elem / source label, onBlocked(retry), onError() }
+  const SP = () => window.SpotifyPremium;
+  function premiumActive() {
+    const prof = SP().profile();
+    return settings.player === "premium" && prof && prof.premium && Boolean(settings.spDevice);
+  }
+  function deviceLabel() {
+    return settings.spDevice === SP().BROWSER ? t("spThisBrowser") : (settings.spDeviceName || "Spotify");
+  }
+  function makePlayer(container, song, ui) {
+    ui = ui || {};
+    const setSrc = (kind) => {
       container.classList.toggle("yt", kind === "youtube");
       container.classList.toggle("sp", kind === "spotify");
+      container.classList.toggle("pm", kind === "premium");
+      if (ui.label) ui.label.textContent = kind === "premium" ? t("src").premium(deviceLabel()) : t("src")[kind];
+      if (ui.onSwitch) ui.onSwitch(kind);
+    };
+    if (premiumActive()) {
+      const p = window.Player.premium(container, song, settings.spDevice);
+      const card = document.createElement("div");
+      card.className = "pm-card";
+      card.textContent = "★ " + song.t + " – " + song.a;
+      container.appendChild(card);
+      setSrc("premium");
+      p.onError = () => {
+        if (ui.label) ui.label.textContent = t("spPlayError");
+        if (ui.onError) ui.onError();
+      };
+      return p;
+    }
+    return window.Player.smart(container, song, settings.player !== "spotify", setSrc, (retry) => {
+      if (ui.onBlocked) ui.onBlocked(retry);
     });
   }
   function spotifyLink(song) {
@@ -443,9 +526,24 @@
       artist.textContent = " – " + s.a;
       title.append(s.t, artist);
 
+      const wrap = document.createElement("div");
+      wrap.className = "player-wrap";
       const frame = document.createElement("div");
-      frame.className = "player-frame " + (settings.player === "youtube" && s.yt ? "yt" : "sp");
-      const player = makePlayer(frame, s);
+      frame.className = "player-frame";
+      // Ha a böngésző nem engedi a gombos indítást, a videóra kell koppintani (iPhone-on csak így megy).
+      // If the browser blocks starting from our button, tap the video itself (the only way on iPhones).
+      const tap = document.createElement("p");
+      tap.className = "tap-hint";
+      tap.textContent = t("tapToPlay");
+      tap.hidden = true;
+      wrap.append(frame, tap);
+      const src = document.createElement("div");
+      src.className = "src-label";
+      const player = makePlayer(frame, s, {
+        label: src,
+        onBlocked: () => { tap.hidden = false; },
+        onSwitch: () => { tap.hidden = true; },
+      });
 
       const lines = document.createElement("div");
       words.forEach((word) => {
@@ -475,7 +573,7 @@
         });
       });
 
-      item.append(h, title, lines, frame, spotifyLink(s));
+      item.append(h, title, lines, wrap, src, spotifyLink(s));
       box.appendChild(item);
     });
     box.hidden = false;
@@ -487,10 +585,12 @@
   function lyricsPool() {
     return data().songs
       .map((s, i) => i)
-      .filter((i) => data().songs[i].s && (settings.player !== "youtube" || data().songs[i].yt));
+      // Premiummal bármelyik időzített dal jó; YouTube-bal csak az, amihez van videó
+      // With Premium any synced song works; with YouTube only those that have a video
+      .filter((i) => data().songs[i].s && (premiumActive() || settings.player === "spotify" || data().songs[i].yt));
   }
   function drawSong() {
-    const key = settings.lang + ":songs:" + settings.player;
+    const key = settings.lang + ":songs:" + (premiumActive() ? "premium" : settings.player);
     if (!decks[key] || decks[key].length === 0) decks[key] = shuffle(lyricsPool());
     return decks[key].pop();
   }
@@ -536,11 +636,13 @@
     const frame = document.createElement("div");
     frame.className = "lyr-player";
     const inner = document.createElement("div");
-    inner.className = "player-frame " + (settings.player === "youtube" && song.yt ? "yt" : "sp");
+    inner.className = "player-frame";
     const cover = document.createElement("div");
     cover.className = "lyr-cover";
     cover.textContent = "🎵";
     frame.append(inner, cover);
+    const src = document.createElement("div");
+    src.className = "src-label";
     const replay = document.createElement("button");
     replay.type = "button";
     replay.className = "btn btn-ghost lyr-replay";
@@ -549,7 +651,7 @@
     const lvl = document.createElement("div");
     lvl.className = "level";
     lvl.textContent = t("levels." + level);
-    box.append(status, meta, context, frame, replay, lvl);
+    box.append(status, meta, context, frame, src, replay, lvl);
 
     fetchLyrics(song.lrc).then((ly) => {
       if (lyr !== round) return; // közben új kör indult / a new round started meanwhile
@@ -567,7 +669,28 @@
       if (level !== "nehez") meta.textContent = song.t + " – " + song.a;
       if (level === "konnyu") context.textContent = quote(lines[i - 1].text + " …");
 
-      round.player = makePlayer(inner, song);
+      // Ha a böngésző nem engedi elindítani: első koppintásra újrapróbáljuk, másodszorra
+      // levesszük a takarást, hogy közvetlenül a lejátszóra lehessen koppintani.
+      // If the browser blocks playback: the first tap retries; after that we remove the cover
+      // so the player itself can be tapped.
+      round.player = makePlayer(inner, song, {
+        label: src,
+        onBlocked: () => {
+          if (lyr !== round || round.phase !== "listening") return;
+          // a takarás lekerül, hogy a videóra lehessen koppintani; utána a kért helyre ugrik
+          // uncover so the video can be tapped; it then jumps to the requested spot
+          round.awaitingTap = true;
+          status.textContent = t("tapToPlay");
+          cover.hidden = true;
+        },
+        onError: () => { if (round.fallback) round.fallback(); },
+        // forrásváltáskor a koppintós állapot megszűnik / switching source clears the tap state
+        onSwitch: () => {
+          round.awaitingTap = false;
+          cover.hidden = false;
+          if (round.phase === "listening") status.textContent = t("listen");
+        },
+      });
 
       // Biztonsági háló: ha a hang nem halad (letiltott videó, 30 mp-es Spotify-előnézet),
       // szövegként mutatjuk az előzményt, és megy tovább a játék.
@@ -592,11 +715,22 @@
         renderActions();
         startTimer();
       };
+      round.fallback = textFallback;
       let lastPos = -1;
       let stuck = 0;
       const watchdog = setInterval(() => {
         if (lyr !== round || round.phase !== "listening") return clearInterval(watchdog);
         const pos = round.player.time();
+        if (round.awaitingTap) {
+          // a koppintásra várunk; ha elindult, újra figyelünk / waiting for the tap; once it plays, watch again
+          if (pos > round.from + 0.3) { round.awaitingTap = false; round.waited = 0; status.textContent = t("listen"); }
+          // ~25 mp után sem indult: szövegként megy tovább / not started after ~25 s: carry on as text
+          round.waited = (round.waited || 0) + 1;
+          if (round.awaitingTap && round.waited >= 9) { clearInterval(watchdog); textFallback(); }
+          stuck = 0;
+          lastPos = pos;
+          return;
+        }
         const inRange = pos >= round.from - 1 && pos <= round.until + 1;
         stuck = Math.abs(pos - lastPos) < 0.05 || !inRange ? stuck + 1 : 0;
         lastPos = pos;
@@ -798,6 +932,27 @@
     renderSettings();
     applyLang();
 
+    // Spotify Premium: bejelentkezés visszatérése, profil, eszközök
+    // Spotify Premium: login return, profile, devices
+    SP().onChange(() => { renderPremium(); refreshDevices(); });
+    SP().init();
+    $("sp-client-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const id = $("sp-client-input").value.trim();
+      if (id) { SP().setClientId(id); renderPremium(); }
+    });
+    $("sp-login").addEventListener("click", () => SP().login());
+    $("sp-logout").addEventListener("click", () => { SP().logout(); renderPremium(); });
+    $("sp-refresh").addEventListener("click", refreshDevices);
+    $("sp-device").addEventListener("change", (e) => {
+      settings.spDevice = e.target.value;
+      settings.spDeviceName = e.target.selectedOptions[0].dataset.name;
+      $("sp-device-hint").textContent = settings.spDevice === SP().BROWSER ? "" : t("spPhoneHint");
+      save();
+    });
+    // minden koppintás feloldja a böngésző lejátszás-tiltását / every tap unlocks browser playback
+    document.addEventListener("click", () => SP().activate(), true);
+
     $("player-form").addEventListener("submit", (e) => {
       e.preventDefault();
       const input = $("player-input");
@@ -818,7 +973,8 @@
         settings[seg.dataset.setting] = b.dataset.value;
         save();
         renderSettings();
-        if (seg.dataset.setting === "lang") { applyLang(); renderPlayers(); }
+        if (seg.dataset.setting === "lang") { applyLang(); renderPlayers(); renderPremium(); }
+        if (seg.dataset.setting === "player" && b.dataset.value === "premium") refreshDevices();
       });
     });
 

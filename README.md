@@ -4,7 +4,7 @@
 
 Two games: **🔤 Words** (sing a song with the word) and **🎵 Finish it!** (a song plays, stops before a line, and you sing how it goes on; when time's up the lyrics appear and you can hear the rest). Both can be played **🎤 taking turns** or as a **⚡ speed race** (fastest singer scores, first to 3/5/10 points wins).
 
-Songs play on **YouTube** (full song from any point, no login) or **Spotify** (full song when logged in, otherwise a 30 s preview); if YouTube can't play a video, the app switches to Spotify by itself, and if no audio plays at all, *Finish it!* shows the lead-in as text so the round still works. Playback stops whenever the next round starts.
+Songs play on **YouTube** (full song from any point, no login), the **Spotify** embed (30 s preview unless the browser is logged in), or **★ Spotify Premium** (log in once; every song plays in full from exactly the right line – in the browser on a computer, or through the Spotify app on a phone). If YouTube can't play a video, the app switches to Spotify by itself; if the browser blocks autoplay, tap the video and it jumps to the right spot; if no audio plays at all, *Finish it!* shows the lead-in as text so the round still works. Playback stops whenever the next round starts.
 
 🇭🇺 **Magyar:**
 
@@ -25,18 +25,37 @@ Társasjáték telefonra vagy laptopra: az app dob egy random magyar szót (vagy
 5. Minden szó **tényleg elhangzik** legalább egy dalban a referencia-playlistről ([magyar chill pt2](https://open.spotify.com/playlist/5QrmfO0XziaHFTL4wr8XNW)).
    - **💡 Tipp**: megmutatja, mely dalokban.
    - **🎧 Megoldás**: ha lejár az idő (vagy senkinek sem ment), magától megjelenik a dal, a dalszöveg sora kiemelt szóval, és egy lejátszó. A **▶ Lejátszás innen** gomb pont attól a sortól indítja a dalt.
-6. **Lejátszó:** YouTube (teljes dal, bárhonnan, bejelentkezés nélkül) vagy Spotify (bejelentkezve teljes dal, különben 30 mp-es előnézet). Ha egy YouTube-videó nem játszható le, az app magától Spotify-ra vált; ha egyáltalán nem szól semmi, a *Fejezd be!* szövegként mutatja a dal elejét. Új körnél a zene mindig leáll.
+6. **Lejátszó:**
+   - **▶ YouTube:** teljes dal, bárhonnan, bejelentkezés nélkül. Ha a böngésző nem engedi elindítani (főleg telefonon), koppints a videóra – magától a jó helyre ugrik.
+   - **● Spotify:** beágyazott lejátszó – bejelentkezett böngészőben teljes dal, különben 30 mp-es előnézet.
+   - **★ Spotify Premium:** egyszeri bejelentkezés után minden dal teljes hosszban, pontosan a kért sortól. Számítógépen magában a böngészőben szól, telefonon a Spotify-appot vezérli (annak nyitva kell lennie) – bármilyen Spotify-eszközt választhatsz (telefon, hangfal, TV).
+   
+   Ha egy YouTube-videó nem játszható le, az app magától Spotify-ra vált; ha egyáltalán nem szól semmi, a *Fejezd be!* szövegként mutatja a dal elejét. Új körnél a zene mindig leáll.
 
 ## Futtatás
 
 Nincs build és nincs függőség: elég megnyitni az `index.html`-t böngészőben, vagy kirakni bármilyen statikus tárhelyre (pl. GitHub Pages).
+
+## Spotify Premium beállítása (egyszer)
+
+A Spotify-bejelentkezéshez kell egy saját (ingyenes) Spotify-app – ezt csak a Spotify-fiók tulajdonosa tudja létrehozni:
+
+1. Nyisd meg: <https://developer.spotify.com/dashboard> → **Create app**.
+2. **Redirect URI:** `https://szbaliint.github.io/enekelj/` (pontosan így, `/`-rel a végén).
+3. **Which API/SDKs:** pipáld be a **Web API**-t és a **Web Playback SDK**-t → Save.
+4. Másold ki a **Client ID**-t, és vagy írd be a `js/config.js`-be (`spotifyClientId`), vagy add meg az oldalon (Lejátszó → ★ Premium).
+5. Fejlesztői módban az app csak azoknak működik, akiket a Dashboardon a **User Management** alatt hozzáadsz (Spotify-fiókjuk e-mail-címével, legfeljebb 25 fő) – add hozzá magadat és a barátaidat.
+
+A Client ID nem titkos; a bejelentkezés PKCE-vel megy, szerver és jelszó nélkül. A tokenek csak a böngészőben tárolódnak.
 
 ## Fájlok
 
 - `data/words-hu.json`, `data/words-en.json`: a jelölt szavak nehézség szerint. Ide írhatsz új szavakat.
 - `data/tracks-hu.json`, `data/tracks-en.json`: a playlistek dalai (cím, előadó, Spotify-azonosító, hossz).
 - `js/data-hu.js`, `js/data-en.js`: **generált** fájlok – csak azok a szavak, amelyek tényleg elhangzanak valamelyik dalban, a dalokkal együtt.
-- `js/player.js`: a YouTube- és Spotify-lejátszó közös felülete (indítás adott másodperctől, megállás adott ponton, automatikus váltás).
+- `js/player.js`: a YouTube-, Spotify- és Premium-lejátszó közös felülete (indítás adott másodperctől, megállás adott ponton, automatikus váltás).
+- `js/spotify.js`: Spotify Premium – bejelentkezés (PKCE), Web Playback SDK, Spotify Connect.
+- `js/config.js`: a Spotify Client ID helye.
 - `js/match.js`: a szóegyeztetés (ragozott alakokkal: szív → szívem, pálinka → pálinkát).
 - `js/i18n.js`: a felület szövegei mindkét nyelven.
 - `js/app.js`: a játék logikája.

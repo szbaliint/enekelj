@@ -272,3 +272,27 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 .scoreboard.final li:first-child .sub { color: #5a4300; }
 .lyr-context div + div { margin-top: 2px; }
 .lyr-note { font-size: .8rem; font-style: normal; margin-top: 8px !important; }
+
+/* Spotify Premium */
+.premium { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.premium h2 { margin-top: 12px; }
+.btn-spotify { width: 100%; background: #1ed760; color: #04230f; }
+.btn-spotify:hover { filter: brightness(1.05); }
+.sp-who { margin: 0; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; }
+.premium select {
+  flex: 1; min-width: 0; font: inherit; color: var(--text); background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 10px;
+}
+#sp-client-input { font-family: ui-monospace, monospace; font-size: .9rem; }
+
+/* Forrás-felirat, koppintós indítás, Premium-kártya / source label, tap-to-play, Premium card */
+.src-label { color: var(--muted); font-size: .75rem; margin-top: 6px; letter-spacing: .02em; }
+.src-label:empty { display: none; }
+.player-wrap { position: relative; }
+.tap-hint { margin: 8px 0 0; font-weight: 700; color: var(--accent-2); text-align: center; }
+.player-frame.pm { min-height: 0; background: none; }
+.pm-card {
+  padding: 14px 16px; border-radius: 12px; font-weight: 600;
+  background: linear-gradient(135deg, #1ed76022, #1ed76008); border: 1px solid #1ed76055;
+}
+#count-row h2 { margin-top: 18px; }

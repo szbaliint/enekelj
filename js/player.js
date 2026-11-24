@@ -46,6 +46,8 @@
     let destroyed = false;
     let watch = null;
     let onEnd = null;
+    let ytState = -1;
+    let pendingFrom = null; // még nem indult el a kért helyről / requested start not reached yet
     const ready = loadYouTube().then((YT) => new Promise((resolve, reject) => {
       if (destroyed) return reject(new Error("destroyed"));
       player = new YT.Player(el, {
@@ -55,6 +57,17 @@
         playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
         events: {
           onReady: () => resolve(player),
+          onStateChange: (e) => {
+            ytState = e.data;
+            // Ha a felhasználó maga indította el a videót (mobilon így kell), a kért helyre ugrunk.
+            // If the user started the video themselves (needed on phones), jump to the requested spot.
+            if (e.data === 1 && pendingFrom != null) {
+              const from = pendingFrom;
+              pendingFrom = null;
+              if (Math.abs(player.getCurrentTime() - from) > 1.5) player.seekTo(from, true);
+            }
+          },
+          // 100/101/150/153: törölt vagy más oldalon nem lejátszható videó / removed or not playable on other sites
           onError: () => { reject(new Error("youtube-error")); fail(); },
         },
       });
@@ -63,8 +76,10 @@
     // Ha a videó nem indul el (letiltva, nem elérhető), szólunk a hívónak.
     // If the video never starts (blocked, unavailable), tell the caller.
     let failTimer = null;
+    let blockTimer = null;
     function fail() {
       clearTimeout(failTimer);
+      clearTimeout(blockTimer);
       if (!destroyed && api.onFail) { const f = api.onFail; api.onFail = null; f(); }
     }
     ready.catch(fail);
@@ -73,6 +88,7 @@
       kind: "youtube",
       ready,
       onFail: null,
+      onBlocked: null, // a böngésző nem engedte elindítani – a videóra kell koppintani / autoplay blocked – tap the video
       // from: másodperc; until: itt megáll (opcionális); done: hívódik, amikor megállt
       // from: seconds; until: pause here (optional); done: called when it stopped there
       play(from, until, done) {
@@ -80,15 +96,22 @@
           if (destroyed) return;
           clearInterval(watch);
           onEnd = done || null;
-          p.seekTo(Math.max(0, from || 0), true);
+          pendingFrom = Math.max(0, from || 0);
+          p.seekTo(pendingFrom, true);
           p.playVideo();
           clearTimeout(failTimer);
+          clearTimeout(blockTimer);
+          // -1 / 5 (nem indult / betöltve) 3 mp után: az automatikus lejátszást letiltotta a böngésző.
+          // still -1 / 5 (unstarted / cued) after 3 s: the browser blocked autoplay.
+          blockTimer = setTimeout(() => {
+            if (!destroyed && (ytState === -1 || ytState === 5) && api.onBlocked) api.onBlocked();
+          }, 3000);
+          // 15 mp után sem szól, és nem a letiltás miatt (pl. végtelen töltés): feladjuk.
+          // Still silent after 15 s and not because of autoplay (e.g. endless buffering): give up.
           failTimer = setTimeout(() => {
-            if (destroyed) return;
-            const st = p.getPlayerState ? p.getPlayerState() : -1;
-            // 1 = lejátszás, 2 = szünet, 0 = vége / playing, paused, ended
-            if (![0, 1, 2].includes(st) || p.getCurrentTime() < (from || 0) + 0.2) fail();
-          }, 7000);
+            if (destroyed || [0, 1, 2, -1, 5].includes(ytState)) return;
+            fail();
+          }, 15000);
           if (until != null) {
             watch = setInterval(() => {
               if (destroyed) return clearInterval(watch);
@@ -103,7 +126,10 @@
       },
       stop() {
         clearInterval(watch);
+        clearTimeout(blockTimer);
+        clearTimeout(failTimer);
         onEnd = null;
+        pendingFrom = null;
         try { if (player && player.pauseVideo) player.pauseVideo(); } catch (_) { /* nem baj */ }
       },
       time() {
@@ -181,12 +207,75 @@
     return api;
   }
 
+  // ---- Spotify Premium (SDK a böngészőben vagy Spotify Connect) / (SDK in the browser or Spotify Connect) ----
+  function premium(container, song, device) {
+    const SP = root.SpotifyPremium;
+    let destroyed = false;
+    let playing = false;
+    let watch = null;
+    let busy = false;
+    let startedAt = 0;
+    let startPos = 0;
+    const api = {
+      kind: "premium",
+      ready: Promise.resolve(),
+      onError: null,
+      play(from, until, done) {
+        clearInterval(watch);
+        startPos = from || 0;
+        startedAt = Date.now();
+        return SP.play(device, song.id, from).then(() => {
+          if (destroyed) { SP.pause(device); return; }
+          playing = true;
+          startedAt = Date.now();
+          // a tényleges pozíció lekérése (a Connect késleltetése miatt) / sync the real position (Connect latency)
+          setTimeout(() => sync(), 1200);
+          if (until == null) return;
+          watch = setInterval(async () => {
+            if (destroyed) return clearInterval(watch);
+            if (busy || api.time() < until - 0.7) return;
+            busy = true;
+            await sync();
+            busy = false;
+            if (api.time() >= until - 0.12) {
+              clearInterval(watch);
+              api.stop();
+              if (done) done();
+            }
+          }, 150);
+        }).catch((e) => { if (!destroyed && api.onError) api.onError(e); });
+      },
+      stop() {
+        clearInterval(watch);
+        if (playing) { playing = false; SP.pause(device); }
+        startPos = api.time();
+      },
+      time() {
+        return playing ? startPos + (Date.now() - startedAt) / 1000 : startPos;
+      },
+      destroy() {
+        destroyed = true;
+        api.stop();
+        container.innerHTML = "";
+        active.delete(api);
+      },
+    };
+    async function sync() {
+      const pos = await SP.position(device);
+      if (pos != null && playing) { startPos = pos; startedAt = Date.now(); }
+    }
+    active.add(api);
+    return api;
+  }
+
   // Rugalmas lejátszó: YouTube-bal indul (ha van videó és azt kérték), és ha az nem szól,
   // magától átvált Spotify-ra ugyanott, és megismétli az utolsó lejátszási kérést.
   // Adaptive player: starts with YouTube (if there's a video and it was asked for); if that never
   // plays, it switches to Spotify in the same spot and repeats the last play request.
   // song: { yt, id }; onSwitch(kind): called when the source changes
-  function smart(container, song, preferYouTube, onSwitch) {
+  // onBlocked(retry): a böngésző letiltotta az indítást – retry()-t egy koppintásból kell hívni
+  // onBlocked(retry): the browser blocked playback – call retry() from a tap
+  function smart(container, song, preferYouTube, onSwitch, onBlocked) {
     let impl = null;
     let lastPlay = null;
     let resolveReady;
@@ -212,6 +301,9 @@
           use("spotify");
           if (lastPlay) api.play(...lastPlay);
         };
+        impl.onBlocked = () => {
+          if (onBlocked) onBlocked(() => { if (lastPlay) api.play(...lastPlay); });
+        };
       }
       impl.ready.then(() => resolveReady(api), () => { if (kind === "spotify") resolveReady(api); });
     }
@@ -236,5 +328,5 @@
     return out;
   }
 
-  root.Player = { youtube, spotify, smart, destroyAll, parseSynced, list: () => [...active] };
+  root.Player = { youtube, spotify, premium, smart, destroyAll, parseSynced, list: () => [...active] };
 })(window);
