@@ -37,6 +37,22 @@
       </div>
 
       <div class="panel">
+        <h2 data-i18n="mode"></h2>
+        <div class="seg" role="radiogroup" data-setting="mode">
+          <button type="button" role="radio" data-value="kor" data-i18n="modes.kor"></button>
+          <button type="button" role="radio" data-value="gyors" data-i18n="modes.gyors"></button>
+        </div>
+        <p class="hint" id="mode-desc"></p>
+
+        <div id="goal-row" hidden>
+          <h2 data-i18n="goal"></h2>
+          <div class="seg" role="radiogroup" data-setting="goal">
+            <button type="button" role="radio" data-value="3">3</button>
+            <button type="button" role="radio" data-value="5">5</button>
+            <button type="button" role="radio" data-value="10">10</button>
+          </div>
+        </div>
+
         <h2 data-i18n="difficulty"></h2>
         <div class="seg" role="radiogroup" data-setting="difficulty">
           <button type="button" role="radio" data-value="konnyu" data-i18n="levels.konnyu"></button>
@@ -61,6 +77,7 @@
         </div>
       </div>
 
+      <p id="start-error" class="error" role="alert" hidden></p>
       <button id="start-btn" class="btn btn-primary btn-big" data-i18n="start"></button>
 
       <details class="rules">
@@ -91,8 +108,10 @@
       <div class="secondary">
         <button id="reroll-btn" type="button" class="btn btn-ghost" data-i18n="reroll"></button>
         <button id="hint-btn" type="button" class="btn btn-ghost" data-i18n="hint"></button>
+        <button id="reveal-btn" type="button" class="btn btn-ghost" data-i18n="reveal"></button>
       </div>
       <div id="hint-box" class="hint-box" hidden></div>
+      <div id="reveal" class="reveal" hidden></div>
 
       <ol id="scoreboard" class="scoreboard"></ol>
     </section>
@@ -110,10 +129,9 @@
   </main>
 
   <script src="js/i18n.js"></script>
-  <script src="js/words-hu.js"></script>
-  <script src="js/words-en.js"></script>
-  <script src="js/playlist-hu.js"></script>
-  <script src="js/playlist-en.js"></script>
+  <script src="js/match.js"></script>
+  <script src="js/data-hu.js"></script>
+  <script src="js/data-en.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
