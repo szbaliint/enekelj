@@ -37,6 +37,13 @@
       </div>
 
       <div class="panel">
+        <h2 data-i18n="game"></h2>
+        <div class="seg" role="radiogroup" data-setting="game">
+          <button type="button" role="radio" data-value="szo" data-i18n="games.szo"></button>
+          <button type="button" role="radio" data-value="dal" data-i18n="games.dal"></button>
+        </div>
+        <p class="hint" id="game-desc"></p>
+
         <h2 data-i18n="mode"></h2>
         <div class="seg" role="radiogroup" data-setting="mode">
           <button type="button" role="radio" data-value="kor" data-i18n="modes.kor"></button>
@@ -61,11 +68,13 @@
           <button type="button" role="radio" data-value="vegyes" data-i18n="levels.vegyes"></button>
         </div>
 
-        <h2 data-i18n="count"></h2>
-        <div class="seg" role="radiogroup" data-setting="count">
-          <button type="button" role="radio" data-value="1">1</button>
-          <button type="button" role="radio" data-value="2">2</button>
-          <button type="button" role="radio" data-value="3">3</button>
+        <div id="count-row">
+          <h2 data-i18n="count"></h2>
+          <div class="seg" role="radiogroup" data-setting="count">
+            <button type="button" role="radio" data-value="1">1</button>
+            <button type="button" role="radio" data-value="2">2</button>
+            <button type="button" role="radio" data-value="3">3</button>
+          </div>
         </div>
 
         <h2 data-i18n="time"></h2>
@@ -75,6 +84,13 @@
           <button type="button" role="radio" data-value="30" data-secs="30"></button>
           <button type="button" role="radio" data-value="60" data-secs="60"></button>
         </div>
+
+        <h2 data-i18n="player"></h2>
+        <div class="seg" role="radiogroup" data-setting="player">
+          <button type="button" role="radio" data-value="youtube">▶ YouTube</button>
+          <button type="button" role="radio" data-value="spotify">● Spotify</button>
+        </div>
+        <p class="hint" id="player-desc"></p>
       </div>
 
       <p id="start-error" class="error" role="alert" hidden></p>
@@ -130,6 +146,7 @@
 
   <script src="js/i18n.js"></script>
   <script src="js/match.js"></script>
+  <script src="js/player.js"></script>
   <script src="js/data-hu.js"></script>
   <script src="js/data-en.js"></script>
   <script src="js/app.js"></script>

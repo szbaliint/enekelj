@@ -239,9 +239,36 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
 .reveal .line { font-style: italic; margin: 0 0 10px; padding-left: 10px; border-left: 3px solid var(--accent-2); }
 .reveal .line.loading { color: var(--muted); }
 .reveal mark { background: var(--accent-2); color: #2a1a00; border-radius: 4px; padding: 0 3px; font-style: normal; font-weight: 700; }
-.reveal iframe { display: block; width: 100%; height: 80px; border: 0; border-radius: 12px; background: var(--bg-2); }
+/* Lejátszók / players */
+.player-frame { position: relative; width: 100%; border-radius: 12px; overflow: hidden; background: var(--bg-2); }
+.player-frame.yt { aspect-ratio: 16 / 9; }
+.player-frame.yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.player-frame.sp { min-height: 80px; }
+.player-frame.sp iframe { display: block; width: 100%; height: 80px; border: 0; }
+.player-error { color: var(--muted); font-size: .9rem; padding: 12px; margin: 0; }
+.sp-link { display: inline-block; margin-top: 8px; font-size: .85rem; }
+
+.line-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.line-row .line { flex: 1; margin: 0; }
+.play-from { padding: 8px 12px; font-size: .85rem; white-space: nowrap; flex-shrink: 0; }
+.reveal .line.before { color: var(--muted); font-style: normal; border-left-color: var(--line); }
+.reveal-item > .play-from { margin: 4px 0 2px; }
+
+/* Fejezd be! kártya / Finish it! card */
+.lyr-status { font-size: clamp(1.6rem, 7vw, 2.2rem); font-weight: 800; letter-spacing: -0.02em; }
+.lyr-meta { color: var(--accent-2); font-weight: 600; margin-top: 6px; min-height: 1.4em; }
+.lyr-context { color: var(--muted); font-style: italic; margin-top: 6px; }
+.lyr-context:empty, .lyr-meta:empty { display: none; }
+.lyr-player { position: relative; width: 100%; max-width: 360px; margin: 16px auto 0; border-radius: 12px; overflow: hidden; }
+.lyr-cover {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 3rem; background: linear-gradient(160deg, #3b2556, #24193a);
+}
+.lyr-replay { margin-top: 12px; padding: 8px 14px; font-size: .9rem; }
 .scoreboard .sub { color: var(--muted); font-weight: 400; font-size: .85em; margin-left: 8px; }
 #goal-row h2 { margin-top: 18px; }
 .timer.stopwatch { justify-content: center; }
 .timer.stopwatch #timer-text { font-size: 2rem; font-weight: 800; color: var(--accent-2); min-width: 0; }
 .scoreboard.final li:first-child .sub { color: #5a4300; }
+.lyr-context div + div { margin-top: 2px; }
+.lyr-note { font-size: .8rem; font-style: normal; margin-top: 8px !important; }

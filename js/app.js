@@ -7,10 +7,14 @@
 
   // ---------- Állapot / state ----------
   const browserLang = (navigator.language || "").toLowerCase().startsWith("hu") ? "hu" : "en";
-  const settings = { lang: browserLang, mode: "kor", goal: "5", difficulty: "vegyes", count: "1", time: "30" };
+  const settings = {
+    lang: browserLang, game: "szo", mode: "kor", goal: "5",
+    difficulty: "vegyes", count: "1", time: "30", player: "youtube",
+  };
   const t = (key) => key.split(".").reduce((o, k) => o[k], window.I18N[settings.lang]);
   const data = () => window.GAME_DATA[settings.lang];
   const isSpeed = () => settings.mode === "gyors";
+  const isLyrics = () => settings.game === "dal";
 
   let players = []; // { name, score, times: [] }
   let turnIndex = 0;
@@ -19,6 +23,9 @@
   let resolved = false;
   let gameOver = false;
   let lastFast = null; // { name, secs } – gyorsasági mód kör-győztese / speed race round winner
+  // "Fejezd be!" kör / "Finish it!" round: { song, lines, i, from, until, phase, player }
+  // phase: "loading" | "listening" | "answer"
+  let lyr = null;
   const decks = {};
 
   let timerId = null;
@@ -138,7 +145,7 @@
     // Gyorsasági módban lejárt idő = senki nem nyert; körönként a többiek még dönthetnek.
     // Speed race: time's up means nobody won. Take turns: the group can still judge.
     if (isSpeed()) { resolved = true; renderActions(); }
-    renderReveal();
+    revealAnswer();
   }
 
   // ---------- Képernyők / screens ----------
@@ -173,7 +180,10 @@
       });
     });
     $("goal-row").hidden = !isSpeed();
+    $("count-row").hidden = isLyrics();
     $("mode-desc").textContent = t("modeDesc." + settings.mode);
+    $("game-desc").textContent = t("gameDesc." + settings.game);
+    $("player-desc").textContent = t("playerDesc." + settings.player);
     $("start-error").hidden = true;
   }
 
@@ -187,6 +197,8 @@
     input.placeholder = t("namePlaceholder");
     input.setAttribute("aria-label", t("nameLabel"));
     $("mode-desc").textContent = t("modeDesc." + settings.mode);
+    $("game-desc").textContent = t("gameDesc." + settings.game);
+    $("player-desc").textContent = t("playerDesc." + settings.player);
     const ol = $("rules-list");
     ol.innerHTML = "";
     t("rules").forEach((text) => {
@@ -232,7 +244,7 @@
         s.textContent = t("fastest")(lastFast.name, fmtSecs(lastFast.secs));
         turn.append(s);
       } else {
-        turn.textContent = t("singEveryone");
+        turn.textContent = isLyrics() ? t("singEveryoneLyrics") : t("singEveryone");
       }
       $("round-label").textContent = t("round")(turnsPlayed + 1);
     } else if (players.length) {
@@ -241,7 +253,7 @@
       s.textContent = players[turnIndex].name;
       turn.append(before, s, after);
       $("round-label").textContent = t("round")(Math.floor(turnsPlayed / players.length) + 1);
-    } else {
+    } else if (!isLyrics()) {
       turn.textContent = current.length > 1 ? t("singMany") : t("singOne");
     }
   }
@@ -258,16 +270,19 @@
       box.appendChild(b);
       return b;
     };
+    if (isLyrics() && !resolved && (!lyr || lyr.phase !== "answer") && players.length) {
+      return; // még szól a dal / the song is still playing
+    }
     if (gameOver) {
       mk(t("results"), "btn-primary full", endGame);
     } else if (!players.length) {
-      mk(t("nextWord"), "btn-primary full", nextTurn);
+      mk(isLyrics() ? t("nextSong") : t("nextWord"), "btn-primary full", nextTurn);
     } else if (resolved) {
-      mk(isSpeed() ? t("nextWord") : t("nextPlayer"), "btn-primary full", nextTurn);
+      mk(isSpeed() ? (isLyrics() ? t("nextSong") : t("nextWord")) : t("nextPlayer"), "btn-primary full", nextTurn);
     } else if (isSpeed()) {
       const p = document.createElement("p");
       p.className = "prompt";
-      p.textContent = t("whoFirst");
+      p.textContent = isLyrics() ? t("whoFirstLyrics") : t("whoFirst");
       box.appendChild(p);
       players.forEach((pl, i) => mk(pl.name, "buzzer", () => resolveSpeed(i)));
       if (players.length % 2) box.lastChild.classList.add("full");
@@ -304,10 +319,19 @@
     });
   }
 
-  // ---------- Tipp: mely dalokban hangzik el / hint: which songs contain the word ----------
+  // ---------- Tipp / hint ----------
+  // Szavas játék: mely dalokban hangzik el. Fejezd be!: a hiányzó sor első szava.
+  // Words: which songs contain the word. Finish it!: first word of the missing line.
   function renderHint() {
     const box = $("hint-box");
     box.innerHTML = "";
+    if (isLyrics()) {
+      if (!lyr || !lyr.lines) return;
+      const first = lyr.lines[lyr.i].text.split(/\s+/)[0];
+      box.textContent = t("firstWord")(first);
+      box.hidden = false;
+      return;
+    }
     current.forEach((c) => {
       const p = document.createElement("div");
       const b = document.createElement("strong");
@@ -328,15 +352,17 @@
     box.hidden = false;
   }
 
-  // ---------- Megoldás: dal, dalszöveg-sor, Spotify lejátszó / answer: song, lyric line, Spotify player ----------
-  // A dalszöveget futás közben kérjük le az lrclib.net-ről (a repóban nincs dalszöveg).
-  // Lyrics are fetched at runtime from lrclib.net (none are stored in the repo).
+  // ---------- Dalszöveg (futás közben az lrclib.net-ről) / lyrics (fetched at runtime from lrclib.net) ----------
+  // A repóban nincs dalszöveg. / No lyrics are stored in the repo.
+  // → { plain: "...", synced: [{ time, text }] }
   const lyricsCache = new Map();
   function fetchLyrics(lrcId) {
     if (!lyricsCache.has(lrcId)) {
       lyricsCache.set(lrcId, fetch(LRCLIB + lrcId)
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => (j && j.plainLyrics) || null)
+        .then((j) => (j && j.plainLyrics
+          ? { plain: j.plainLyrics, synced: window.Player.parseSynced(j.syncedLyrics) }
+          : null))
         .catch(() => null));
     }
     return lyricsCache.get(lrcId);
@@ -356,7 +382,30 @@
       }
     });
   }
+  const quote = (text) => (settings.lang === "hu" ? "„" : "“") + text + "”";
 
+  // ---------- Lejátszó / player ----------
+  // A beállított lejátszó; ha a dalhoz nincs YouTube-videó, Spotify.
+  // The chosen player; falls back to Spotify when the song has no YouTube video.
+  // Ha a YouTube nem szól, magától Spotify-ra vált (lásd Player.smart).
+  // If YouTube doesn't play, it switches to Spotify by itself (see Player.smart).
+  function makePlayer(container, song) {
+    return window.Player.smart(container, song, settings.player === "youtube", (kind) => {
+      container.classList.toggle("yt", kind === "youtube");
+      container.classList.toggle("sp", kind === "spotify");
+    });
+  }
+  function spotifyLink(song) {
+    const a = document.createElement("a");
+    a.className = "sp-link";
+    a.href = "https://open.spotify.com/track/" + encodeURIComponent(song.id);
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.textContent = t("openSpotify");
+    return a;
+  }
+
+  // ---------- Megoldás a szavas játékban / answer in the word game ----------
   // Több szónál, ha van olyan dal, amiben mind benne van, azt mutatjuk.
   // With several words, prefer one song that contains all of them.
   function pickSongs() {
@@ -370,9 +419,14 @@
     return current.map((c) => ({ song: c.songs[Math.floor(Math.random() * c.songs.length)], words: [c.word] }));
   }
 
+  function revealAnswer() {
+    if (isLyrics()) renderLyricsAnswer(); else renderReveal();
+  }
+
   function renderReveal() {
     const box = $("reveal");
     if (!box.hidden && box.dataset.round === String(turnsPlayed)) return; // már látszik / already shown
+    window.Player.destroyAll();
     box.innerHTML = "";
     box.dataset.round = String(turnsPlayed);
     $("hint-box").hidden = true;
@@ -389,57 +443,263 @@
       artist.textContent = " – " + s.a;
       title.append(s.t, artist);
 
+      const frame = document.createElement("div");
+      frame.className = "player-frame " + (settings.player === "youtube" && s.yt ? "yt" : "sp");
+      const player = makePlayer(frame, s);
+
       const lines = document.createElement("div");
       words.forEach((word) => {
+        const row = document.createElement("div");
+        row.className = "line-row";
         const line = document.createElement("p");
         line.className = "line loading";
         line.textContent = t("loadingLine");
-        lines.appendChild(line);
-        fetchLyrics(s.lrc).then((lyrics) => {
-          const found = lyrics && window.Match.findLine(word, lyrics, settings.lang);
-          if (!found) { line.remove(); return; }
+        row.appendChild(line);
+        lines.appendChild(row);
+        fetchLyrics(s.lrc).then((ly) => {
+          // időzített sor, ha van – onnan indítható a dal / synced line if available – playable from there
+          const timed = ly && ly.synced.find((l) => window.Match.textMatches(word, l.text, settings.lang));
+          const found = timed ? timed.text : ly && window.Match.findLine(word, ly.plain, settings.lang);
+          if (!found) { row.remove(); return; }
           line.className = "line";
           line.textContent = "";
-          const [open, close] = settings.lang === "hu" ? ["„", "”"] : ["“", "”"];
-          highlightLine(line, open + found.trim() + close, word);
+          highlightLine(line, quote(found.trim()), word);
+          if (timed) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-ghost play-from";
+            btn.textContent = t("playFrom");
+            btn.onclick = () => player.play(Math.max(0, timed.time - 1.5));
+            row.appendChild(btn);
+          }
         });
       });
 
-      const iframe = document.createElement("iframe");
-      iframe.src = "https://open.spotify.com/embed/track/" + encodeURIComponent(s.id) + "?utm_source=generator";
-      iframe.title = s.t + " – " + s.a + " (Spotify)";
-      iframe.loading = "lazy";
-      iframe.allow = "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture";
-
-      item.append(h, title, lines, iframe);
+      item.append(h, title, lines, frame, spotifyLink(s));
       box.appendChild(item);
     });
     box.hidden = false;
   }
 
+  // ---------- Fejezd be! / Finish it! ----------
+  // Csak időzített dalszöveggel rendelkező dalok; YouTube-lejátszónál olyanok, amikhez van videó is.
+  // Only songs with synced lyrics; with the YouTube player, only those that also have a video.
+  function lyricsPool() {
+    return data().songs
+      .map((s, i) => i)
+      .filter((i) => data().songs[i].s && (settings.player !== "youtube" || data().songs[i].yt));
+  }
+  function drawSong() {
+    const key = settings.lang + ":songs:" + settings.player;
+    if (!decks[key] || decks[key].length === 0) decks[key] = shuffle(lyricsPool());
+    return decks[key].pop();
+  }
+
+  // Nehézség = mennyi előzményt hallasz: könnyű 3 sor, közepes 2, nehéz 1
+  // Difficulty = how much lead-in you hear: easy 3 lines, medium 2, hard 1
+  const CONTEXT = { konnyu: 3, kozepes: 2, nehez: 1 };
+
+  function pickTarget(lines, ctx) {
+    const ok = [];
+    for (let i = ctx; i < lines.length - 1; i++) {
+      const line = lines[i];
+      const words = line.text.split(/\s+/).filter(Boolean);
+      const lead = line.time - lines[i - ctx].time;
+      if (words.length >= 3 && line.text !== lines[i - 1].text && line.time > 8 && lead >= 3 && lead <= 30 &&
+          lines.slice(i - ctx, i).every((l) => l.text)) ok.push(i);
+    }
+    return ok.length ? ok[Math.floor(Math.random() * ok.length)] : -1;
+  }
+
+  function newLyricsRound(tries) {
+    tries = tries || 0;
+    current = [];
+    const pool = lyricsPool();
+    const box = $("words");
+    box.innerHTML = "";
+    if (!pool.length) { box.textContent = t("noSongs"); return; }
+
+    const level = settings.difficulty === "vegyes"
+      ? LEVELS[Math.floor(Math.random() * LEVELS.length)]
+      : settings.difficulty;
+    const song = data().songs[drawSong()];
+    const round = { song, level, phase: "loading", lines: null, i: -1, player: null };
+    lyr = round;
+
+    const status = document.createElement("div");
+    status.className = "lyr-status";
+    status.textContent = t("loadingSong");
+    const meta = document.createElement("div");
+    meta.className = "lyr-meta";
+    const context = document.createElement("div");
+    context.className = "lyr-context";
+    const frame = document.createElement("div");
+    frame.className = "lyr-player";
+    const inner = document.createElement("div");
+    inner.className = "player-frame " + (settings.player === "youtube" && song.yt ? "yt" : "sp");
+    const cover = document.createElement("div");
+    cover.className = "lyr-cover";
+    cover.textContent = "🎵";
+    frame.append(inner, cover);
+    const replay = document.createElement("button");
+    replay.type = "button";
+    replay.className = "btn btn-ghost lyr-replay";
+    replay.textContent = t("replay");
+    replay.hidden = true;
+    const lvl = document.createElement("div");
+    lvl.className = "level";
+    lvl.textContent = t("levels." + level);
+    box.append(status, meta, context, frame, replay, lvl);
+
+    fetchLyrics(song.lrc).then((ly) => {
+      if (lyr !== round) return; // közben új kör indult / a new round started meanwhile
+      const lines = ly ? ly.synced.filter((l) => l.text) : [];
+      const ctx = CONTEXT[level];
+      const i = pickTarget(lines, ctx);
+      if (i < 0) { if (tries < 5) newLyricsRound(tries + 1); else status.textContent = t("noSongs"); return; }
+      round.lines = lines;
+      round.i = i;
+      round.from = Math.max(0, lines[i - ctx].time - 0.4);
+      round.until = Math.max(round.from + 1, lines[i].time - 0.15);
+
+      // könnyű: cím + előző sor; közepes: cím; nehéz: semmi (csak a megoldásnál)
+      // easy: title + previous line; medium: title; hard: nothing until the answer
+      if (level !== "nehez") meta.textContent = song.t + " – " + song.a;
+      if (level === "konnyu") context.textContent = quote(lines[i - 1].text + " …");
+
+      round.player = makePlayer(inner, song);
+
+      // Biztonsági háló: ha a hang nem halad (letiltott videó, 30 mp-es Spotify-előnézet),
+      // szövegként mutatjuk az előzményt, és megy tovább a játék.
+      // Safety net: if the audio isn't progressing (blocked video, 30 s Spotify preview),
+      // show the lead-in as text and carry on.
+      const textFallback = () => {
+        if (lyr !== round || round.phase !== "listening") return;
+        round.player.stop();
+        context.innerHTML = "";
+        lines.slice(i - ctx, i).forEach((l) => {
+          const p = document.createElement("div");
+          p.textContent = l.text;
+          context.appendChild(p);
+        });
+        const note = document.createElement("div");
+        note.className = "lyr-note";
+        note.textContent = t("audioFailed");
+        context.appendChild(note);
+        meta.textContent = song.t + " – " + song.a;
+        round.phase = "answer";
+        status.textContent = t("continueNow");
+        renderActions();
+        startTimer();
+      };
+      let lastPos = -1;
+      let stuck = 0;
+      const watchdog = setInterval(() => {
+        if (lyr !== round || round.phase !== "listening") return clearInterval(watchdog);
+        const pos = round.player.time();
+        const inRange = pos >= round.from - 1 && pos <= round.until + 1;
+        stuck = Math.abs(pos - lastPos) < 0.05 || !inRange ? stuck + 1 : 0;
+        lastPos = pos;
+        if (stuck >= 4) { clearInterval(watchdog); textFallback(); } // ~12 mp / ~12 s
+      }, 3000);
+
+      const listen = () => {
+        status.textContent = t("listen");
+        round.player.play(round.from, round.until, () => {
+          if (lyr !== round) return;
+          replay.hidden = false;
+          if (round.phase === "listening") {
+            round.phase = "answer";
+            status.textContent = t("continueNow");
+            renderActions();
+            startTimer();
+          } else {
+            status.textContent = t("continueNow");
+          }
+        });
+      };
+      replay.onclick = listen;
+      round.phase = "listening";
+      round.player.ready.then(() => { if (lyr === round) listen(); }).catch(textFallback);
+    });
+  }
+
+  // Megoldás: a hiányzó sor (+ a következő) és a folytatás lejátszása
+  // Answer: the missing line (+ the next one) and playing on from there
+  function renderLyricsAnswer() {
+    const round = lyr;
+    if (!round || !round.lines) return;
+    const box = $("reveal");
+    if (!box.hidden && box.dataset.round === String(turnsPlayed) + ":lyr") return;
+    box.innerHTML = "";
+    box.dataset.round = String(turnsPlayed) + ":lyr";
+    $("hint-box").hidden = true;
+    const card = $("words");
+    const cover = card.querySelector(".lyr-cover");
+    if (cover) cover.remove();
+    card.querySelector(".lyr-meta").textContent = round.song.t + " – " + round.song.a;
+
+    const item = document.createElement("div");
+    item.className = "reveal-item";
+    const h = document.createElement("h3");
+    h.textContent = t("answerTitle");
+    const lines = document.createElement("div");
+    round.lines.slice(round.i - 1, round.i + 2).forEach((l, k) => {
+      const p = document.createElement("p");
+      p.className = "line" + (k === 0 ? " before" : "");
+      if (k === 1) {
+        const m = document.createElement("mark");
+        m.textContent = l.text;
+        p.appendChild(m);
+      } else {
+        p.textContent = l.text;
+      }
+      lines.appendChild(p);
+    });
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost play-from";
+    btn.textContent = t("playOn");
+    btn.onclick = () => { if (round.player) round.player.play(Math.max(0, round.lines[round.i].time - 0.3)); };
+    item.append(h, lines, btn, spotifyLink(round.song));
+    box.appendChild(item);
+    box.hidden = false;
+  }
+
   // ---------- Körök / rounds ----------
-  function newWords() {
-    current = drawRound();
+  function newRound() {
+    window.Player.destroyAll(); // az előző dal leáll / the previous song stops
+    stopTimer();
     resolved = false;
+    lyr = null;
     $("card").classList.remove("timeout", "success");
     $("hint-box").hidden = true;
     $("reveal").hidden = true;
-    renderWords();
+    $("reveal").innerHTML = "";
+    $("timer").hidden = true;
+    $("reroll-btn").textContent = isLyrics() ? t("otherSong") : t("reroll");
+    if (isLyrics()) {
+      newLyricsRound();
+    } else {
+      current = drawRound();
+      renderWords();
+      startTimer();
+    }
     renderTurn();
     renderActions();
-    startTimer();
   }
+  const roundPoints = () => (isLyrics() ? 1 : current.length);
 
   // Körönkénti mód / take turns
   function resolve(ok) {
     stopTimer();
     resolved = true;
     if (ok) {
-      players[turnIndex].score += current.length;
+      players[turnIndex].score += roundPoints();
       $("card").classList.add("success");
       cheer();
     } else {
-      renderReveal();
+      revealAnswer();
     }
     renderScoreboard();
     renderActions();
@@ -453,7 +713,7 @@
     if (i >= 0) {
       const p = players[i];
       const secs = elapsed();
-      p.score += current.length;
+      p.score += roundPoints();
       p.times.push(secs);
       lastFast = { name: p.name, secs };
       $("card").classList.add("success");
@@ -461,7 +721,7 @@
       if (p.score >= Number(settings.goal)) gameOver = true;
     } else {
       lastFast = null;
-      renderReveal();
+      revealAnswer();
     }
     renderTurn();
     if (i < 0) $("turn").textContent = t("nobodyBtn").replace(/^✗\s*/, "");
@@ -475,7 +735,7 @@
       if (!isSpeed()) turnIndex = (turnIndex + 1) % players.length;
     }
     lastFast = null;
-    newWords();
+    newRound();
     renderScoreboard();
   }
 
@@ -494,12 +754,13 @@
     lastFast = null;
     save();
     show("screen-game");
-    newWords();
+    newRound();
     renderScoreboard();
   }
 
   function endGame() {
     stopTimer();
+    window.Player.destroyAll();
     if (!players.length) { show("screen-setup"); return; }
     // Pontszám szerint, holtversenynél a gyorsabb átlagidő nyer (gyorsasági mód).
     // By score; in speed race a faster average time breaks ties.
@@ -564,12 +825,12 @@
     $("start-btn").addEventListener("click", startGame);
     $("quit-btn").addEventListener("click", endGame);
     $("again-btn").addEventListener("click", () => show("screen-setup"));
-    $("reroll-btn").addEventListener("click", () => { if (!resolved) newWords(); });
+    $("reroll-btn").addEventListener("click", () => { if (!resolved) newRound(); });
     $("hint-btn").addEventListener("click", () => {
       const box = $("hint-box");
       if (box.hidden) renderHint(); else box.hidden = true;
     });
-    $("reveal-btn").addEventListener("click", renderReveal);
+    $("reveal-btn").addEventListener("click", revealAnswer);
   }
 
   init();

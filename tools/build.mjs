@@ -6,7 +6,8 @@
 // song, and records which songs contain each word. The lyrics themselves are NOT committed.
 //
 // Usage:
-//   NODE_USE_ENV_PROXY=1 node tools/fetch-lyrics.mjs   # once, fills .cache/lyrics
+//   NODE_USE_ENV_PROXY=1 node tools/fetch-lyrics.mjs    # once, fills .cache/lyrics
+//   NODE_USE_ENV_PROXY=1 node tools/fetch-youtube.mjs   # once, fills .cache/youtube
 //   node tools/build.mjs
 import { readFile, writeFile } from "node:fs/promises";
 import vm from "node:vm";
@@ -31,7 +32,14 @@ for (const lang of Object.keys(PLAYLISTS)) {
     let cached;
     try { cached = JSON.parse(await readFile(`.cache/lyrics/${lang}/${tr.id}.json`, "utf8")); } catch (_) { continue; }
     if (!cached.lrclib || !cached.lyrics) continue;
-    songs.push({ t: clean(tr.t), a: tr.a, id: tr.id, lrc: cached.lrclib });
+    // yt: YouTube-videó azonosító (ha van egyező hosszúságú); s: 1, ha van időzített dalszöveg
+    // yt: YouTube video id (if a length-matched one exists); s: 1 if lrclib has synced lyrics
+    let yt = {};
+    try { yt = JSON.parse(await readFile(`.cache/youtube/${lang}/${tr.id}.json`, "utf8")); } catch (_) { /* run fetch-youtube */ }
+    const song = { t: clean(tr.t), a: tr.a, id: tr.id, lrc: cached.lrclib };
+    if (yt.yt) song.yt = yt.yt;
+    if (yt.synced) song.s = 1;
+    songs.push(song);
     lyrics.push(cached.lyrics);
   }
 
@@ -55,6 +63,8 @@ for (const lang of Object.keys(PLAYLISTS)) {
   await writeFile(`js/data-${lang}.js`, js);
 
   const counts = LEVELS.map((l) => `${l} ${words[l].length}`).join(", ");
+  const playable = songs.filter((x) => x.yt && x.s).length;
   console.log(`${lang}: ${songs.length}/${tracks.length} songs with lyrics; words: ${counts}`);
+  console.log(`  YouTube: ${songs.filter((x) => x.yt).length}, synced lyrics: ${songs.filter((x) => x.s).length}, usable for "finish the lyrics": ${playable}`);
   console.log(`  dropped (not in any lyrics): ${dropped.join(", ")}`);
 }
