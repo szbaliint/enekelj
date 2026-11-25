@@ -69,4 +69,5 @@ A dalszövegeket (időzítéssel együtt) az [lrclib.net](https://lrclib.net) ad
 node tools/fetch-lyrics.mjs    # dalszövegek letöltése a .cache/ mappába (proxy mögött: NODE_USE_ENV_PROXY=1)
 node tools/fetch-youtube.mjs   # minden dalhoz egy beágyazható, pontosan egyező hosszúságú YouTube-videó
 node tools/build.mjs           # js/data-*.js újragenerálása; kiírja, mely szavak estek ki
+sh tools/bump-version.sh       # új verziójel, hogy a telefonok ne a régi, cache-elt fájlokat futtassák
 ```

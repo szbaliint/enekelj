@@ -296,3 +296,11 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px
   background: linear-gradient(135deg, #1ed76022, #1ed76008); border: 1px solid #1ed76055;
 }
 #count-row h2 { margin-top: 18px; }
+.sp-debug { margin-top: 14px; }
+.sp-debug summary { cursor: pointer; color: var(--muted); font-size: .9rem; }
+.sp-debug pre {
+  white-space: pre-wrap; word-break: break-word; font-size: .72rem; line-height: 1.4;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px; max-height: 260px; overflow: auto; margin: 8px 0;
+}
+.version { color: var(--muted); font-size: .75rem; text-align: center; margin: 24px 0 0; opacity: .6; }

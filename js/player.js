@@ -260,6 +260,7 @@
     let startPos = 0;
     const api = {
       kind: "premium",
+      onStatus: null,
       ready: Promise.resolve(),
       cue() { return Promise.resolve(); },
       onError: null,
@@ -279,6 +280,23 @@
           // then seek – an early seek gets lost. Two good readings in a row are needed to accept it.
           const target = Math.max(0, from || 0);
           let good = 0;
+          let seeks = 0;
+          let blind = 0; // vak ugrások száma (legfeljebb 2, különben hurokba ragadna) / blind seeks (max 2, or it would loop)
+          const status = (txt) => { if (api.onStatus) api.onStatus(txt); };
+          const mmss = (x) => Math.floor(x / 60) + ":" + String(Math.floor(x % 60)).padStart(2, "0");
+          const doSeek = async () => {
+            seeks++;
+            try {
+              await SP.seek(device, target);
+              status("↪ " + mmss(target));
+            } catch (e) {
+              status("↪ " + mmss(target) + " ✗ " + (e.status || "") + " " + e.message);
+            }
+            startPos = target;
+            startedAt = Date.now();
+          };
+          // ~12 mp-ig próbálkozik; ha a Spotify nem ad használható állapotot, 2 mp után "vakon" is ugrik
+          // tries for ~12 s; if Spotify gives no usable state, it also seeks "blindly" after 2 s
           const ensure = async (tries) => {
             if (destroyed || !playing) return;
             const st = await SP.playerState(device);
@@ -287,18 +305,24 @@
             if (ours && st.playing) {
               if (target > 2 && (st.pos < target - 2 || st.pos > target + 25)) {
                 good = 0;
-                try { await SP.seek(device, target); } catch (_) { /* következő kör / next round */ }
-                startPos = target;
-                startedAt = Date.now();
+                await doSeek();
               } else {
                 good++;
                 startPos = st.pos;
                 startedAt = Date.now();
+                if (good >= 2) status("✓ " + mmss(st.pos));
               }
+            } else if (target > 2 && blind < 2 && tries % 2 === 0 && (!st || tries < 20)) {
+              blind++;
+              // nincs állapot: rögtön vakon ugrunk (és 1 mp-enként újra); más dal látszik: 2 mp után
+              // no state at all: blind seek right away (and every 1 s); another track showing: after 2 s
+              await doSeek();
             }
             if (good < 2 && tries > 0) setTimeout(() => ensure(tries - 1), 500);
+            else if (good < 2) status("? " + mmss(api.time()) + (seeks ? " (" + seeks + "× ↪)" : ""));
           };
-          setTimeout(() => ensure(20), 300);
+          SP.note("▶ " + song.t + " → " + mmss(target));
+          setTimeout(() => ensure(24), 300);
           if (until == null) return;
           watch = setInterval(async () => {
             if (destroyed) return clearInterval(watch);

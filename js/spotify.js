@@ -114,20 +114,47 @@
     }
   }
 
+  // Hibanapló: az utolsó 60 Spotify-hívás (a Premium-panelen látható)
+  // Debug log: the last 60 Spotify calls (shown on the Premium panel)
+  const LOG = [];
+  const t0 = Date.now();
+  function log(line) {
+    LOG.push(((Date.now() - t0) / 1000).toFixed(1) + "s " + line);
+    if (LOG.length > 60) LOG.shift();
+  }
+
   async function api(method, path, body) {
     const tk = await token();
     if (!tk) throw new Error("not-logged-in");
-    const r = await fetch(API + path, {
-      method,
-      headers: { Authorization: "Bearer " + tk, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (r.status === 204 || r.status === 202) return null;
+    const short = path.replace(/device_id=[^&]+/, "device_id=…").replace(/[?&]_=\d+/, "");
+    let r;
+    try {
+      r = await fetch(API + path, {
+        method,
+        headers: { Authorization: "Bearer " + tk, ...(body ? { "Content-Type": "application/json" } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        cache: "no-store",
+      });
+    } catch (e) {
+      log(method + " " + short + " → hálózati hiba / network error");
+      throw e;
+    }
+    if (r.status === 204 || r.status === 202) {
+      log(method + " " + short + (body && body.position_ms != null ? " [" + (body.position_ms / 1000).toFixed(1) + "s]" : "") + " → " + r.status);
+      return null;
+    }
     const j = await r.json().catch(() => null);
     if (!r.ok) {
-      const err = new Error((j && j.error && (j.error.reason || j.error.message)) || "http " + r.status);
+      const reason = (j && j.error && (j.error.reason || j.error.message)) || "http " + r.status;
+      log(method + " " + short + " → " + r.status + " " + reason);
+      const err = new Error(reason);
       err.status = r.status;
       throw err;
+    }
+    if (path.startsWith("/me/player?") || path === "/me/player") {
+      log("GET /me/player → " + (j && j.item ? (j.item.name + " @" + ((j.progress_ms || 0) / 1000).toFixed(1) + "s" + (j.is_playing ? " ▶" : " ⏸")) : "üres / empty"));
+    } else {
+      log(method + " " + short + " → " + r.status);
     }
     return j;
   }
@@ -269,6 +296,7 @@
   root.SpotifyPremium = {
     BROWSER,
     init, login, logout, devices, play, pause, seek, position, playerState, activate,
+    log: () => LOG.slice(), note: log,
     redirectUri, clientId, deviceIdFor,
     setClientId(id) { store.set({ ...store.get(), clientId: id.trim() }); state.clientId = id.trim(); emit(); },
     loggedIn: () => Boolean(state.profile),

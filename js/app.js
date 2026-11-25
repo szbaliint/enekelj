@@ -472,6 +472,8 @@
         if (ui.label) ui.label.textContent = t("spPlayError");
         if (ui.onError) ui.onError();
       };
+      // az ugrás állapota a felirat végén (pl. "↪ 1:02", "✓ 1:03") / seek status after the label
+      p.onStatus = (txt) => { if (ui.label) ui.label.textContent = t("src").premium(deviceLabel()) + " · " + txt; };
       return p;
     }
     // Fejezd be!: mindig YouTube, és ha nem szól, rögtön szöveg – a Spotify-előnézet nem tud dal közepére ugrani.
@@ -944,6 +946,8 @@
 
   // ---------- Események / events ----------
   function init() {
+    const own = document.querySelector('script[src*="js/app.js"]');
+    $("version").textContent = "v" + ((own && own.src.split("v=")[1]) || "dev");
     load();
     renderPlayers();
     renderSettings();
@@ -961,6 +965,13 @@
     $("sp-login").addEventListener("click", () => SP().login());
     $("sp-logout").addEventListener("click", () => { SP().logout(); renderPremium(); });
     $("sp-refresh").addEventListener("click", refreshDevices);
+    const showLog = () => { $("sp-log").textContent = SP().log().join("\n") || "–"; };
+    $("sp-debug").addEventListener("toggle", showLog);
+    $("sp-log-refresh").addEventListener("click", showLog);
+    $("sp-log-copy").addEventListener("click", () => {
+      showLog();
+      try { navigator.clipboard.writeText($("sp-log").textContent); } catch (_) { /* nem baj */ }
+    });
     $("sp-device").addEventListener("change", (e) => {
       settings.spDevice = e.target.value;
       settings.spDeviceName = e.target.selectedOptions[0].dataset.name;
