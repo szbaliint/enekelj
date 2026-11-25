@@ -350,7 +350,9 @@
           use("spotify");
           if (lastPlay) api.play(...lastPlay);
         };
+        const me = impl;
         impl.onBlocked = () => {
+          if (impl !== me) return; // már lecseréltük / already replaced
           if (onBlocked) onBlocked(() => { if (lastPlay) api.play(...lastPlay); });
         };
       }
