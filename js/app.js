@@ -477,9 +477,13 @@
     // Fejezd be!: mindig YouTube, és ha nem szól, rögtön szöveg – a Spotify-előnézet nem tud dal közepére ugrani.
     // Finish it!: always YouTube; if it can't play, straight to text – the Spotify preview can't jump mid-song.
     const lyricsMode = Boolean(ui.lyrics);
-    return window.Player.smart(container, song, lyricsMode || settings.player !== "spotify", setSrc, (retry) => {
+    const p = window.Player.smart(container, song, lyricsMode || settings.player !== "spotify", setSrc, (retry) => {
       if (ui.onBlocked) ui.onBlocked(retry);
     }, lyricsMode, () => { if (ui.onError) ui.onError(); });
+    // kijelentkezett Spotify: csak előnézet – szólunk, miért szól az elejéről
+    // logged-out Spotify: preview only – explain why it plays from the start
+    p.onPreview = () => { if (ui.label) ui.label.textContent = t("previewOnly"); };
+    return p;
   }
   function spotifyLink(song) {
     const a = document.createElement("a");
@@ -566,6 +570,8 @@
           line.textContent = "";
           highlightLine(line, quote(found.trim()), word);
           if (timed) {
+            // a lejátszó saját ▶ gombja is ettől a sortól indít / the player's own ▶ starts at this line too
+            player.cue(Math.max(0, timed.time - 1.5));
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = "btn btn-ghost play-from";
@@ -800,7 +806,10 @@
     btn.type = "button";
     btn.className = "btn btn-ghost play-from";
     btn.textContent = t("playOn");
-    btn.onclick = () => { if (round.player) round.player.play(Math.max(0, round.lines[round.i].time - 0.3)); };
+    const contFrom = Math.max(0, round.lines[round.i].time - 0.3);
+    btn.onclick = () => { if (round.player) round.player.play(contFrom); };
+    // a lejátszó saját ▶ gombja is a folytatástól indít / the player's own ▶ starts at the continuation too
+    if (round.player && round.phase !== "listening") round.player.cue(contFrom);
     item.append(h, lines, btn, spotifyLink(round.song));
     box.appendChild(item);
     box.hidden = false;

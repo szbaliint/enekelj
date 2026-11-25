@@ -36,7 +36,7 @@ for (const lang of Object.keys(PLAYLISTS)) {
     // yt: YouTube video id (if a length-matched one exists); s: 1 if lrclib has synced lyrics
     let yt = {};
     try { yt = JSON.parse(await readFile(`.cache/youtube/${lang}/${tr.id}.json`, "utf8")); } catch (_) { /* run fetch-youtube */ }
-    const song = { t: clean(tr.t), a: tr.a, id: tr.id, lrc: cached.lrclib };
+    const song = { t: clean(tr.t), a: tr.a, id: tr.id, d: tr.d, lrc: cached.lrclib };
     if (yt.yt) song.yt = yt.yt;
     if (yt.synced) song.s = 1;
     songs.push(song);

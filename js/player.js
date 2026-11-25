@@ -59,6 +59,7 @@
           onReady: () => resolve(player),
           onStateChange: (e) => {
             ytState = e.data;
+            if (e.data === 0 && onEnd) { clearInterval(watch); const f = onEnd; onEnd = null; f(); }
             // Ha a felhasználó maga indította el a videót (mobilon így kell), a kért helyre ugrunk.
             // If the user started the video themselves (needed on phones), jump to the requested spot.
             if (e.data === 1 && pendingFrom != null) {
@@ -97,8 +98,17 @@
           clearInterval(watch);
           onEnd = done || null;
           pendingFrom = Math.max(0, from || 0);
-          p.seekTo(pendingFrom, true);
-          p.playVideo();
+          // A kezdőpont (és a végpont) a videóba töltve: így a videóra koppintva is innen indul,
+          // nem a 0:00-tól (a sima seekTo-t a mobilos kézi indítás figyelmen kívül hagyja).
+          // Start (and end) baked into the video, so even tapping the video starts here, not at 0:00
+          // (a plain seekTo gets ignored when the user starts playback by hand on phones).
+          const opts = { videoId, startSeconds: pendingFrom };
+          if (until != null) opts.endSeconds = until + 0.3;
+          // loadVideoById: azonnal betölt és indít (így a hiba is rögtön kiderül); ha a böngésző nem
+          // engedi elindítani, a kezdőpont akkor is megmarad a kézi indításhoz.
+          // loadVideoById: loads and starts right away (so errors surface immediately); if the browser
+          // blocks the start, the start point still applies to a manual tap.
+          p.loadVideoById(opts);
           clearTimeout(failTimer);
           clearTimeout(blockTimer);
           // -1 / 5 (nem indult / betöltve) 3 mp után: az automatikus lejátszást letiltotta a böngésző.
@@ -140,6 +150,15 @@
       time() {
         try { return player && player.getCurrentTime ? player.getCurrentTime() : 0; } catch (_) { return 0; }
       },
+      // Előkészítés lejátszás nélkül: a videó saját ▶ gombja is innen indít
+      // Prepare without playing: the video's own ▶ button starts from here too
+      cue(from) {
+        return ready.then((p) => {
+          if (destroyed || ytState === 1) return;
+          pendingFrom = Math.max(0, from || 0);
+          p.cueVideoById({ videoId, startSeconds: pendingFrom });
+        }).catch(() => {});
+      },
       destroy() {
         destroyed = true;
         clearTimeout(failTimer);
@@ -154,7 +173,8 @@
   }
 
   // ---- Spotify ----
-  function spotify(container, trackId) {
+  // trackLen: a dal valódi hossza mp-ben (az előnézet felismeréséhez) / real track length in s (to spot previews)
+  function spotify(container, trackId, trackLen) {
     const el = document.createElement("div");
     container.appendChild(el);
     let controller = null;
@@ -170,6 +190,12 @@
         c.addListener("playback_update", (e) => {
           position = e.data.position / 1000;
           playing = !e.data.isPaused;
+          // Kijelentkezett Spotify: csak rövid előnézet, nem lehet a dal közepére ugrani
+          // Logged-out Spotify: only a short preview, can't jump mid-song
+          if (!api.isPreview && e.data.duration > 0 && e.data.duration <= 31000 && trackLen > 40) {
+            api.isPreview = true;
+            if (api.onPreview) api.onPreview();
+          }
           if (until != null && !e.data.isPaused && position >= until) {
             until = null;
             c.pause();
@@ -183,16 +209,23 @@
     const api = {
       kind: "spotify",
       ready,
+      isPreview: false,
+      onPreview: null,
+      cue() { return Promise.resolve(); },
       play(from, stopAt, done) {
         return ready.then((c) => {
           if (destroyed) return;
           until = stopAt == null ? null : stopAt;
           onEnd = done || null;
-          c.play();
           if (from) {
-            setTimeout(() => { if (!destroyed) c.seek(from); }, 400);
+            // betöltés kezdőponttal, majd indítás / load with a start point, then play
+            c.loadUri("spotify:track:" + trackId, false, Math.floor(from));
+            setTimeout(() => { if (!destroyed) c.play(); }, 300);
+            setTimeout(() => { if (!destroyed && position < from - 2) c.seek(from); }, 800);
             // ellenőrzés: tényleg onnan szól-e / check it really plays from there
             setTimeout(() => { if (!destroyed && position < from - 2) c.seek(from); }, 1500);
+          } else {
+            c.play();
           }
         });
       },
@@ -228,6 +261,7 @@
     const api = {
       kind: "premium",
       ready: Promise.resolve(),
+      cue() { return Promise.resolve(); },
       onError: null,
       play(from, until, done) {
         clearInterval(watch);
@@ -298,13 +332,16 @@
         lastPlay = [from, until, done];
         return impl.ready.then(() => impl.play(from, until, done)).catch(() => {});
       },
+      onPreview: null,
+      cue(from) { return impl ? impl.cue(from) : Promise.resolve(); },
       stop() { if (impl) impl.stop(); },
       time() { return impl ? impl.time() : 0; },
       destroy() { if (impl) impl.destroy(); },
     };
     function use(kind) {
       if (impl) impl.destroy();
-      impl = kind === "youtube" ? youtube(container, song.yt) : spotify(container, song.id);
+      impl = kind === "youtube" ? youtube(container, song.yt) : spotify(container, song.id, song.d || 999);
+      if (kind === "spotify") impl.onPreview = () => { if (api.onPreview) api.onPreview(); };
       api.kind = kind;
       if (onSwitch) onSwitch(kind);
       if (kind === "youtube") {
