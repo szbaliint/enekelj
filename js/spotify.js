@@ -210,7 +210,7 @@
       logout();
       return;
     }
-    if (state.profile.premium) initSdk();
+    if (state.profile.premium) { initSdk(); restoreLeftover(); }
     emit();
   }
 
@@ -239,6 +239,60 @@
       position_ms: Math.max(0, Math.round((fromSec || 0) * 1000)),
     });
   }
+  // Folytatás (ugyanaz a dal, újratöltés nélkül) / resume (same track, no reload)
+  async function resume(dev) {
+    const id = deviceIdFor(dev);
+    if (!id) throw Object.assign(new Error("no-device"), { status: 404 });
+    activate();
+    await api("PUT", "/me/player/play?device_id=" + encodeURIComponent(id));
+  }
+
+  // ---- Hangerő: indításkor egy pillanatra lenémítjuk, hogy a dal eleje ne villanjon fel ----
+  // ---- Volume: muted for a moment while starting, so the song's beginning doesn't flash ----
+  const RESTORE = "enekelj:sp-restore";
+  async function getVolume(dev) {
+    if (dev === BROWSER && state.sdkPlayer) {
+      try { return Math.round((await state.sdkPlayer.getVolume()) * 100); } catch (_) { return null; }
+    }
+    try {
+      const j = await api("GET", "/me/player/devices");
+      const d = (j.devices || []).find((x) => x.id === deviceIdFor(dev));
+      return d && d.supports_volume !== false && d.volume_percent != null ? d.volume_percent : null;
+    } catch (_) { return null; }
+  }
+  async function setVolume(dev, pct) {
+    if (dev === BROWSER && state.sdkPlayer) { await state.sdkPlayer.setVolume(pct / 100); return; }
+    const id = deviceIdFor(dev);
+    if (!id) return;
+    await api("PUT", "/me/player/volume?volume_percent=" + Math.round(pct) + "&device_id=" + encodeURIComponent(id));
+  }
+  // Lenémít, és visszaad egy visszaállító függvényt (vagy null-t, ha az eszköz nem engedi)
+  // Mutes and returns a restore function (or null if the device doesn't allow it)
+  async function muteForStart(dev) {
+    const vol = await getVolume(dev);
+    if (vol == null || vol === 0) return null;
+    try { await setVolume(dev, 0); } catch (_) { return null; }
+    try { localStorage.setItem(RESTORE, JSON.stringify({ dev, vol })); } catch (_) { /* nem baj */ }
+    let done = false;
+    const restore = async () => {
+      if (done) return;
+      done = true;
+      for (let i = 0; i < 3; i++) {
+        try { await setVolume(dev, vol); break; } catch (_) { await new Promise((r) => setTimeout(r, 400)); }
+      }
+      try { localStorage.removeItem(RESTORE); } catch (_) { /* nem baj */ }
+    };
+    setTimeout(restore, 6000); // biztonsági háló / safety net
+    return restore;
+  }
+  // Ha az oldal némítás közben záródott be, visszaállítjuk / restore if the page closed while muted
+  async function restoreLeftover() {
+    let r = null;
+    try { r = JSON.parse(localStorage.getItem(RESTORE) || "null"); } catch (_) { /* nem baj */ }
+    if (!r) return;
+    try { await setVolume(r.dev, r.vol); localStorage.removeItem(RESTORE); } catch (_) { /* később / later */ }
+  }
+
   // Ugrás a dal adott pontjára. Kell, mert a Spotify a lejátszás indításakor gyakran figyelmen
   // kívül hagyja a position_ms-t (főleg egy eszköz első lejátszásánál), és 0:00-ról indul.
   // Seek to a point in the track. Needed because Spotify often ignores position_ms when starting
@@ -295,7 +349,7 @@
 
   root.SpotifyPremium = {
     BROWSER,
-    init, login, logout, devices, play, pause, seek, position, playerState, activate,
+    init, login, logout, devices, play, pause, seek, resume, muteForStart, position, playerState, activate,
     log: () => LOG.slice(), note: log,
     redirectUri, clientId, deviceIdFor,
     setClientId(id) { store.set({ ...store.get(), clientId: id.trim() }); state.clientId = id.trim(); emit(); },

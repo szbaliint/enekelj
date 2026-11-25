@@ -258,6 +258,8 @@
     let busy = false;
     let startedAt = 0;
     let startPos = 0;
+    let loaded = false;  // a telefonon már ez a dal van betöltve / this track is already loaded on the device
+    let unmute = null;   // hangerő-visszaállítás, ha némítva indítottunk / volume restore if we started muted
     const api = {
       kind: "premium",
       onStatus: null,
@@ -268,7 +270,16 @@
         clearInterval(watch);
         startPos = from || 0;
         startedAt = Date.now();
-        return SP.play(device, song.id, from).then(() => {
+        const wasLoaded = loaded;
+        // Ugyanaz a dal már betöltve: előbb ugrás, aztán folytatás – így nincs mi felvillanjon.
+        // Új dal: egy pillanatra lenémítjuk, amíg a telefon betölti és a jó helyre ugrik.
+        // Same track already loaded: seek first, then resume – nothing can flash.
+        // New track: muted for a moment while the phone loads it and jumps to the right spot.
+        const start = wasLoaded
+          ? SP.seek(device, Math.max(0, from || 0)).then(() => SP.resume(device))
+          : ((from || 0) > 2 ? SP.muteForStart(device) : Promise.resolve(null))
+            .then((u) => { unmute = u; return SP.play(device, song.id, from); });
+        return start.then(() => {
           if (destroyed) { SP.pause(device); return; }
           playing = true;
           startedAt = Date.now();
@@ -281,6 +292,7 @@
           const target = Math.max(0, from || 0);
           let good = 0;
           let seeks = 0;
+          let foreign = 0; // hányszor látszott más dal / how often another track showed
           let blind = 0; // vak ugrások száma (legfeljebb 2, különben hurokba ragadna) / blind seeks (max 2, or it would loop)
           const status = (txt) => { if (api.onStatus) api.onStatus(txt); };
           const mmss = (x) => Math.floor(x / 60) + ":" + String(Math.floor(x % 60)).padStart(2, "0");
@@ -302,14 +314,30 @@
             const st = await SP.playerState(device);
             if (destroyed || !playing) return;
             const ours = st && (st.track === song.id || st.alt === song.id);
+            // "folytatásnál" kiderült, hogy közben más dal szól: rendes indítás
+            // on a resume it turned out another track is playing: do a normal start
+            if (wasLoaded && st && !ours && ++foreign >= 2) {
+              loaded = false;
+              api.play(from, until, done);
+              return;
+            }
             if (ours && st.playing) {
               if (target > 2 && (st.pos < target - 2 || st.pos > target + 25)) {
                 good = 0;
                 await doSeek();
               } else {
                 good++;
+                loaded = true;
                 startPos = st.pos;
                 startedAt = Date.now();
+                if (unmute) {
+                  // némítva szólt eddig: vissza a kezdőpontra, és csak AKKOR hangosítunk
+                  // it was playing muted: back to the start point, and only THEN unmute
+                  const u = unmute;
+                  unmute = null;
+                  await doSeek();
+                  await u();
+                }
                 if (good >= 2) status("✓ " + mmss(st.pos));
               }
             } else if (target > 2 && blind < 2 && tries % 2 === 0 && (!st || tries < 20)) {
@@ -319,10 +347,13 @@
               await doSeek();
             }
             if (good < 2 && tries > 0) setTimeout(() => ensure(tries - 1), 500);
-            else if (good < 2) status("? " + mmss(api.time()) + (seeks ? " (" + seeks + "× ↪)" : ""));
+            else if (good < 2) {
+              status("? " + mmss(api.time()) + (seeks ? " (" + seeks + "× ↪)" : ""));
+              if (unmute) { const u = unmute; unmute = null; u(); }
+            }
           };
           SP.note("▶ " + song.t + " → " + mmss(target));
-          setTimeout(() => ensure(24), 300);
+          setTimeout(() => ensure(24), wasLoaded ? 400 : 250);
           if (until == null) return;
           watch = setInterval(async () => {
             if (destroyed) return clearInterval(watch);
@@ -341,6 +372,7 @@
       stop() {
         clearInterval(watch);
         if (playing) { playing = false; SP.pause(device); }
+        if (unmute) { const u = unmute; unmute = null; u(); } // a hangerő mindig visszaáll / volume always comes back
         startPos = api.time();
       },
       time() {
