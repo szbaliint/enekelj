@@ -244,10 +244,32 @@
     } catch (_) { return null; }
   }
 
+  // A lejátszó valós állapota: melyik dal szól, hol tart, megy-e
+  // Real player state: which track, where it is, whether it's playing
+  async function playerState(dev) {
+    if (dev === BROWSER && state.sdkPlayer) {
+      const s = await state.sdkPlayer.getCurrentState();
+      if (!s) return null;
+      const tr = s.track_window && s.track_window.current_track;
+      return { track: tr && (tr.linked_from && tr.linked_from.id || tr.id), alt: tr && tr.id, pos: s.position / 1000, playing: !s.paused };
+    }
+    try {
+      const j = await api("GET", "/me/player?_=" + Date.now());
+      if (!j || !j.item) return null;
+      return {
+        track: (j.item.linked_from && j.item.linked_from.id) || j.item.id,
+        alt: j.item.id,
+        device: j.device && j.device.id,
+        pos: (j.progress_ms || 0) / 1000,
+        playing: Boolean(j.is_playing),
+      };
+    } catch (_) { return null; }
+  }
+
   root.SpotifyPremium = {
     BROWSER,
-    init, login, logout, devices, play, pause, seek, position, activate,
-    redirectUri, clientId,
+    init, login, logout, devices, play, pause, seek, position, playerState, activate,
+    redirectUri, clientId, deviceIdFor,
     setClientId(id) { store.set({ ...store.get(), clientId: id.trim() }); state.clientId = id.trim(); emit(); },
     loggedIn: () => Boolean(state.profile),
     profile: () => state.profile,

@@ -271,25 +271,34 @@
           if (destroyed) { SP.pause(device); return; }
           playing = true;
           startedAt = Date.now();
-          // Ellenőrzés: tényleg a kért helyről szól-e? Ha nem (0:00-ról indult), odaugrunk – többször is.
-          // Check it really plays from the requested spot; if not (it started at 0:00), seek there – retrying.
+          // Ellenőrzés: tényleg a mi dalunk szól-e, a kért helyről? A telefon (Spotify Connect) csak
+          // pár száz ms múlva tölti be az új dalt, ezért addig várunk, és csak AKKOR ugrunk oda –
+          // a túl korai ugrás elveszne. Kétszer egymás után jó pozíció kell az elfogadáshoz.
+          // Verify our track really plays from the requested spot. The phone (Spotify Connect) loads the
+          // new track a few hundred ms later, so we wait until it's actually playing OUR track and only
+          // then seek – an early seek gets lost. Two good readings in a row are needed to accept it.
           const target = Math.max(0, from || 0);
+          let good = 0;
           const ensure = async (tries) => {
             if (destroyed || !playing) return;
-            const pos = await SP.position(device);
+            const st = await SP.playerState(device);
             if (destroyed || !playing) return;
-            if (pos != null) { startPos = pos; startedAt = Date.now(); }
-            if (target > 2 && (pos == null || pos < target - 2 || pos > target + 15) && tries > 0) {
-              try { await SP.seek(device, target); } catch (_) { /* következő próbálkozás / next try */ }
-              startPos = target;
-              startedAt = Date.now();
-              setTimeout(() => ensure(tries - 1), 900);
+            const ours = st && (st.track === song.id || st.alt === song.id);
+            if (ours && st.playing) {
+              if (target > 2 && (st.pos < target - 2 || st.pos > target + 25)) {
+                good = 0;
+                try { await SP.seek(device, target); } catch (_) { /* következő kör / next round */ }
+                startPos = target;
+                startedAt = Date.now();
+              } else {
+                good++;
+                startPos = st.pos;
+                startedAt = Date.now();
+              }
             }
+            if (good < 2 && tries > 0) setTimeout(() => ensure(tries - 1), 500);
           };
-          // azonnali ugrás (hogy a dal eleje fel se villanjon), aztán ellenőrzés
-          // seek right away (so the song's start doesn't flash), then verify
-          if (target > 2) SP.seek(device, target).catch(() => {});
-          setTimeout(() => ensure(4), 700);
+          setTimeout(() => ensure(20), 300);
           if (until == null) return;
           watch = setInterval(async () => {
             if (destroyed) return clearInterval(watch);
@@ -320,9 +329,11 @@
         active.delete(api);
       },
     };
+    // csak a mi dalunk állapotát fogadjuk el (a telefon eleinte még a régit jelentheti)
+    // only accept the state of OUR track (the phone may still report the old one at first)
     async function sync() {
-      const pos = await SP.position(device);
-      if (pos != null && playing) { startPos = pos; startedAt = Date.now(); }
+      const st = await SP.playerState(device);
+      if (st && playing && (st.track === song.id || st.alt === song.id)) { startPos = st.pos; startedAt = Date.now(); }
     }
     active.add(api);
     return api;
