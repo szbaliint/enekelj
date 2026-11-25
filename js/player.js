@@ -271,8 +271,25 @@
           if (destroyed) { SP.pause(device); return; }
           playing = true;
           startedAt = Date.now();
-          // a tényleges pozíció lekérése (a Connect késleltetése miatt) / sync the real position (Connect latency)
-          setTimeout(() => sync(), 1200);
+          // Ellenőrzés: tényleg a kért helyről szól-e? Ha nem (0:00-ról indult), odaugrunk – többször is.
+          // Check it really plays from the requested spot; if not (it started at 0:00), seek there – retrying.
+          const target = Math.max(0, from || 0);
+          const ensure = async (tries) => {
+            if (destroyed || !playing) return;
+            const pos = await SP.position(device);
+            if (destroyed || !playing) return;
+            if (pos != null) { startPos = pos; startedAt = Date.now(); }
+            if (target > 2 && (pos == null || pos < target - 2 || pos > target + 15) && tries > 0) {
+              try { await SP.seek(device, target); } catch (_) { /* következő próbálkozás / next try */ }
+              startPos = target;
+              startedAt = Date.now();
+              setTimeout(() => ensure(tries - 1), 900);
+            }
+          };
+          // azonnali ugrás (hogy a dal eleje fel se villanjon), aztán ellenőrzés
+          // seek right away (so the song's start doesn't flash), then verify
+          if (target > 2) SP.seek(device, target).catch(() => {});
+          setTimeout(() => ensure(4), 700);
           if (until == null) return;
           watch = setInterval(async () => {
             if (destroyed) return clearInterval(watch);

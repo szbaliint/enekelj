@@ -212,6 +212,20 @@
       position_ms: Math.max(0, Math.round((fromSec || 0) * 1000)),
     });
   }
+  // Ugrás a dal adott pontjára. Kell, mert a Spotify a lejátszás indításakor gyakran figyelmen
+  // kívül hagyja a position_ms-t (főleg egy eszköz első lejátszásánál), és 0:00-ról indul.
+  // Seek to a point in the track. Needed because Spotify often ignores position_ms when starting
+  // playback (especially the first play on a device) and starts at 0:00.
+  async function seek(dev, sec) {
+    const ms = Math.max(0, Math.round(sec * 1000));
+    if (dev === BROWSER && state.sdkPlayer) {
+      try { await state.sdkPlayer.seek(ms); return; } catch (_) { /* jöhet az API / fall back to the API */ }
+    }
+    const id = deviceIdFor(dev);
+    if (!id) return;
+    await api("PUT", "/me/player/seek?position_ms=" + ms + "&device_id=" + encodeURIComponent(id));
+  }
+
   async function pause(dev) {
     const id = deviceIdFor(dev);
     if (!id) return;
@@ -232,7 +246,7 @@
 
   root.SpotifyPremium = {
     BROWSER,
-    init, login, logout, devices, play, pause, position, activate,
+    init, login, logout, devices, play, pause, seek, position, activate,
     redirectUri, clientId,
     setClientId(id) { store.set({ ...store.get(), clientId: id.trim() }); state.clientId = id.trim(); emit(); },
     loggedIn: () => Boolean(state.profile),
