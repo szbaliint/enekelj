@@ -113,8 +113,13 @@
             fail();
           }, 15000);
           if (until != null) {
+            const start = Math.max(0, from || 0);
+            let fixes = 0;
             watch = setInterval(() => {
               if (destroyed) return clearInterval(watch);
+              // ha mégis az elejéről szól (pl. a böngésző eldobta az ugrást), visszaugrunk a kért helyre
+              // if it's playing from the start anyway (the seek got dropped), jump back to the requested spot
+              if (ytState === 1 && p.getCurrentTime() < start - 2 && fixes < 3) { fixes++; p.seekTo(start, true); return; }
               if (p.getCurrentTime() >= until) {
                 p.pauseVideo();
                 clearInterval(watch);
@@ -184,7 +189,11 @@
           until = stopAt == null ? null : stopAt;
           onEnd = done || null;
           c.play();
-          if (from) setTimeout(() => { if (!destroyed) c.seek(from); }, 400);
+          if (from) {
+            setTimeout(() => { if (!destroyed) c.seek(from); }, 400);
+            // ellenőrzés: tényleg onnan szól-e / check it really plays from there
+            setTimeout(() => { if (!destroyed && position < from - 2) c.seek(from); }, 1500);
+          }
         });
       },
       stop() {
@@ -275,7 +284,9 @@
   // song: { yt, id }; onSwitch(kind): called when the source changes
   // onBlocked(retry): a böngésző letiltotta az indítást – retry()-t egy koppintásból kell hívni
   // onBlocked(retry): the browser blocked playback – call retry() from a tap
-  function smart(container, song, preferYouTube, onSwitch, onBlocked) {
+  // noFallback: ne váltson Spotify-előnézetre (az nem tud dal közepére ugrani) – helyette onFail()
+  // noFallback: don't switch to the Spotify preview (it can't jump mid-song) – call onFail() instead
+  function smart(container, song, preferYouTube, onSwitch, onBlocked, noFallback, onFail) {
     let impl = null;
     let lastPlay = null;
     let resolveReady;
@@ -298,6 +309,7 @@
       if (onSwitch) onSwitch(kind);
       if (kind === "youtube") {
         impl.onFail = () => {
+          if (noFallback) { if (onFail) onFail(); return; }
           use("spotify");
           if (lastPlay) api.play(...lastPlay);
         };

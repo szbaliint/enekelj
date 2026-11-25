@@ -474,9 +474,12 @@
       };
       return p;
     }
-    return window.Player.smart(container, song, settings.player !== "spotify", setSrc, (retry) => {
+    // Fejezd be!: mindig YouTube, és ha nem szól, rögtön szöveg – a Spotify-előnézet nem tud dal közepére ugrani.
+    // Finish it!: always YouTube; if it can't play, straight to text – the Spotify preview can't jump mid-song.
+    const lyricsMode = Boolean(ui.lyrics);
+    return window.Player.smart(container, song, lyricsMode || settings.player !== "spotify", setSrc, (retry) => {
       if (ui.onBlocked) ui.onBlocked(retry);
-    });
+    }, lyricsMode, () => { if (ui.onError) ui.onError(); });
   }
   function spotifyLink(song) {
     const a = document.createElement("a");
@@ -587,7 +590,7 @@
       .map((s, i) => i)
       // Premiummal bármelyik időzített dal jó; YouTube-bal csak az, amihez van videó
       // With Premium any synced song works; with YouTube only those that have a video
-      .filter((i) => data().songs[i].s && (premiumActive() || settings.player === "spotify" || data().songs[i].yt));
+      .filter((i) => data().songs[i].s && (premiumActive() || data().songs[i].yt));
   }
   function drawSong() {
     const key = settings.lang + ":songs:" + (premiumActive() ? "premium" : settings.player);
@@ -601,11 +604,13 @@
 
   function pickTarget(lines, ctx) {
     const ok = [];
-    for (let i = ctx; i < lines.length - 1; i++) {
+    // ne az elejéről: legalább a dal 15%-ánál és 20 mp után / not from the start: past 15% of the song and 20 s
+    const minLine = Math.max(ctx, Math.floor(lines.length * 0.15));
+    for (let i = minLine; i < lines.length - 1; i++) {
       const line = lines[i];
       const words = line.text.split(/\s+/).filter(Boolean);
       const lead = line.time - lines[i - ctx].time;
-      if (words.length >= 3 && line.text !== lines[i - 1].text && line.time > 8 && lead >= 3 && lead <= 30 &&
+      if (words.length >= 3 && line.text !== lines[i - 1].text && line.time > 20 && lead >= 3 && lead <= 30 &&
           lines.slice(i - ctx, i).every((l) => l.text)) ok.push(i);
     }
     return ok.length ? ok[Math.floor(Math.random() * ok.length)] : -1;
@@ -674,6 +679,7 @@
       // If the browser blocks playback: the first tap retries; after that we remove the cover
       // so the player itself can be tapped.
       round.player = makePlayer(inner, song, {
+        lyrics: true,
         label: src,
         onBlocked: () => {
           if (lyr !== round || round.phase !== "listening") return;
@@ -726,7 +732,7 @@
           if (pos > round.from + 0.3) { round.awaitingTap = false; round.waited = 0; status.textContent = t("listen"); }
           // ~25 mp után sem indult: szövegként megy tovább / not started after ~25 s: carry on as text
           round.waited = (round.waited || 0) + 1;
-          if (round.awaitingTap && round.waited >= 9) { clearInterval(watchdog); textFallback(); }
+          if (round.awaitingTap && round.waited >= 12) { clearInterval(watchdog); textFallback(); } // ~25 mp
           stuck = 0;
           lastPos = pos;
           return;
@@ -734,8 +740,8 @@
         const inRange = pos >= round.from - 1 && pos <= round.until + 1;
         stuck = Math.abs(pos - lastPos) < 0.05 || !inRange ? stuck + 1 : 0;
         lastPos = pos;
-        if (stuck >= 4) { clearInterval(watchdog); textFallback(); } // ~12 mp / ~12 s
-      }, 3000);
+        if (stuck >= 3) { clearInterval(watchdog); textFallback(); } // ~6 mp / ~6 s
+      }, 2000);
 
       const listen = () => {
         status.textContent = t("listen");
@@ -832,6 +838,7 @@
       players[turnIndex].score += roundPoints();
       $("card").classList.add("success");
       cheer();
+      if (isLyrics()) revealAnswer(); // Fejezd be!: a megoldás mindig látszik / always show the answer
     } else {
       revealAnswer();
     }
@@ -852,6 +859,7 @@
       lastFast = { name: p.name, secs };
       $("card").classList.add("success");
       cheer();
+      if (isLyrics()) revealAnswer();
       if (p.score >= Number(settings.goal)) gameOver = true;
     } else {
       lastFast = null;
